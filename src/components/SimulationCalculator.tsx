@@ -225,16 +225,106 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
 
       {/* Main Simulation Table: Items & Quantities */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="font-bold text-sm text-slate-900">
-            Daftar Produk & Jumlah Rencana Pembelian
-          </h3>
-          <span className="text-xs text-slate-500">
+        <div className="p-3.5 sm:p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-xs sm:text-sm text-slate-900">
+              Daftar Produk & Jumlah Rencana Pembelian
+            </h3>
+            <p className="text-[11px] text-slate-500 sm:hidden">
+              Gunakan tombol - / + untuk menambah order
+            </p>
+          </div>
+          <span className="text-xs text-slate-500 hidden sm:inline">
             Atur kuantiti di bawah ini
           </span>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* MOBILE CARD VIEW (screens < 640px) */}
+        <div className="sm:hidden divide-y divide-slate-150 p-3 space-y-3">
+          {products.map((p) => {
+            const qty = quantities[p.id] || 0;
+            const stats = getProductPriceStats(p);
+            const subtotal = (stats.cheapestQuote?.price || 0) * qty;
+            const itemSavings = stats.difference * qty;
+
+            return (
+              <div 
+                key={p.id} 
+                className={`p-3.5 rounded-xl border transition-colors ${
+                  qty > 0 ? 'bg-emerald-50/20 border-emerald-200' : 'bg-slate-50/50 border-slate-200 text-slate-500'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <p className="font-bold text-sm text-slate-900 leading-snug">{p.name}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {p.company ? `${p.company} • ` : ''}{p.defaultUnit || 'Box'}
+                    </p>
+                  </div>
+
+                  {/* Quantity Stepper */}
+                  <div className="flex items-center border border-slate-300 rounded-xl overflow-hidden bg-white shadow-2xs shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleQtyChange(p.id, qty - 1)}
+                      className="w-9 h-9 flex items-center justify-center bg-slate-100 active:bg-slate-200 text-slate-800 font-bold transition-colors cursor-pointer text-base"
+                      aria-label="Kurang kuantiti"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="0"
+                      value={qty}
+                      onChange={(e) => handleQtyChange(p.id, parseInt(e.target.value) || 0)}
+                      className="w-12 text-center text-sm font-bold text-slate-900 py-1.5 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleQtyChange(p.id, qty + 1)}
+                      className="w-9 h-9 flex items-center justify-center bg-slate-100 active:bg-slate-200 text-slate-800 font-bold transition-colors cursor-pointer text-base"
+                      aria-label="Tambah kuantiti"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Best supplier and pricing breakdown */}
+                <div className="mt-2.5 pt-2 border-t border-slate-150 flex items-center justify-between text-xs">
+                  <div>
+                    {stats.cheapestQuote ? (
+                      <div>
+                        <span className="text-[10px] text-slate-400 block uppercase font-semibold">Supplier Termurah</span>
+                        <span className="font-bold text-slate-800">{stats.cheapestQuote.supplierName}</span>
+                        <span className="text-slate-500 block text-[11px]">
+                          @ {formatRupiah(stats.cheapestQuote.price)}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 text-xs">Belum ada harga</span>
+                    )}
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 block uppercase font-semibold">Subtotal</span>
+                    <span className="font-extrabold text-sm text-slate-900 block">
+                      {formatRupiah(subtotal)}
+                    </span>
+                    {itemSavings > 0 && (
+                      <span className="text-[10px] font-semibold text-emerald-700">
+                        Hemat {formatRupiah(itemSavings)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* DESKTOP TABLE VIEW (screens >= 640px) */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-700 font-bold">

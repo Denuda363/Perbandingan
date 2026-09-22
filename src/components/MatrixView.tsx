@@ -6,7 +6,10 @@ import {
   TrendingDown, 
   Building2, 
   CheckCircle2, 
-  Layers
+  Layers,
+  LayoutList,
+  Table2,
+  ChevronRight
 } from 'lucide-react';
 import { Product, Supplier } from '../types';
 import { formatRupiah, getProductPriceStats } from '../utils/formatters';
@@ -26,6 +29,7 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
 }) => {
   const [filterMultiSupplierOnly, setFilterMultiSupplierOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'savings' | 'name'>('savings');
+  const [mobileViewStyle, setMobileViewStyle] = useState<'card' | 'table'>('card');
 
   // Filter and sort products
   let displayProducts = products.filter((p) => {
@@ -47,42 +51,193 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
       {/* Matrix Controls & Header */}
-      <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <Layers className="w-5 h-5 text-emerald-600" />
-            <h2 className="text-base sm:text-lg font-bold text-slate-900">
-              Matriks Perbandingan Harga Multi-Supplier
-            </h2>
+      <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50/70 flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <Layers className="w-5 h-5 text-emerald-600" />
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                Matriks Perbandingan Harga Multi-Supplier
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Tabel komparasi langsung seluruh penawaran harga antar supplier untuk setiap produk.
+            </p>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Tabel komparasi langsung seluruh penawaran harga antar supplier untuk setiap produk.
-          </p>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Mobile View Style Switcher */}
+            <div className="sm:hidden flex items-center bg-slate-200 p-0.5 rounded-lg text-xs font-semibold">
+              <button
+                onClick={() => setMobileViewStyle('card')}
+                className={`px-2.5 py-1 rounded-md flex items-center gap-1 transition-all cursor-pointer ${
+                  mobileViewStyle === 'card'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600'
+                }`}
+              >
+                <LayoutList className="w-3.5 h-3.5" />
+                <span>Kartu</span>
+              </button>
+              <button
+                onClick={() => setMobileViewStyle('table')}
+                className={`px-2.5 py-1 rounded-md flex items-center gap-1 transition-all cursor-pointer ${
+                  mobileViewStyle === 'table'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600'
+                }`}
+              >
+                <Table2 className="w-3.5 h-3.5" />
+                <span>Tabel</span>
+              </button>
+            </div>
+
+            <label className="flex items-center gap-1.5 text-xs text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 cursor-pointer shadow-2xs">
+              <input
+                type="checkbox"
+                checked={filterMultiSupplierOnly}
+                onChange={(e) => setFilterMultiSupplierOnly(e.target.checked)}
+                className="rounded text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5"
+              />
+              <span className="font-medium">&ge; 2 supplier</span>
+            </label>
+
+            <button
+              onClick={() => setSortBy(sortBy === 'savings' ? 'name' : 'savings')}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"
+            >
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+              <span>{sortBy === 'savings' ? 'Selisih' : 'A-Z'}</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <label className="flex items-center gap-1.5 text-xs text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 cursor-pointer shadow-2xs">
-            <input
-              type="checkbox"
-              checked={filterMultiSupplierOnly}
-              onChange={(e) => setFilterMultiSupplierOnly(e.target.checked)}
-              className="rounded text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5"
-            />
-            <span className="font-medium">Hanya produk &ge; 2 supplier</span>
-          </label>
-
-          <button
-            onClick={() => setSortBy(sortBy === 'savings' ? 'name' : 'savings')}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"
-          >
-            <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
-            <span>Urut: {sortBy === 'savings' ? 'Selisih Terbesar' : 'Nama Produk'}</span>
-          </button>
+        {/* Mobile Swipe Hint when Table mode is active */}
+        <div className="sm:hidden text-[11px] text-slate-500 bg-slate-100/90 px-3 py-1.5 rounded-lg flex items-center justify-between">
+          <span>Mode: {mobileViewStyle === 'card' ? 'Kartu Komparasi (Nyaman di HP)' : 'Tabel Geser ke Kanan'}</span>
+          {mobileViewStyle === 'table' && (
+            <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
+              Geser <ChevronRight className="w-3.5 h-3.5 animate-pulse" />
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Responsive Matrix Table */}
-      <div className="overflow-x-auto max-w-full">
+      {/* MOBILE CARD VIEW (Default on mobile) */}
+      <div className={`sm:hidden ${mobileViewStyle === 'card' ? 'block' : 'hidden'} divide-y divide-slate-150 p-3 space-y-3`}>
+        {displayProducts.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 text-xs">
+            Tidak ada produk yang sesuai filter.
+          </div>
+        ) : (
+          displayProducts.map((product) => {
+            const stats = getProductPriceStats(product);
+            const subCount = product.subUnitCount || 10;
+            const subName = product.subUnitName || 'lembar';
+
+            // Quotes sorted from cheapest to most expensive
+            const sortedQuotes = [...product.quotes].sort((a, b) => a.price - b.price);
+
+            return (
+              <div 
+                key={product.id}
+                className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200 shadow-2xs space-y-2.5"
+              >
+                {/* Product Title & Details */}
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900 leading-snug">
+                      {product.name}
+                    </h3>
+                    {product.company && (
+                      <p className="text-xs text-slate-600 font-medium mt-0.5 flex items-center gap-1">
+                        <Building2 className="w-3 h-3 text-slate-400" />
+                        <span>{product.company}</span>
+                      </p>
+                    )}
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {product.packaging || 'Kemasan standar'} • Isi: {product.packContent || `1 Box = ${subCount} ${subName}`}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => onAddQuote(product)}
+                    className="p-2 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-xs font-semibold shrink-0"
+                    title="Tambah penawaran supplier"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Savings Badge if >= 2 quotes */}
+                {stats.quoteCount >= 2 && stats.difference > 0 && (
+                  <div className="bg-emerald-100/70 border border-emerald-200 rounded-lg p-2 flex items-center justify-between text-xs">
+                    <span className="text-emerald-800 font-semibold flex items-center gap-1">
+                      <TrendingDown className="w-3.5 h-3.5 text-emerald-700" />
+                      Hemat {formatRupiah(stats.difference)} ({stats.savingsPercentage}%)
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-bold bg-white px-1.5 py-0.5 rounded">
+                      {stats.quoteCount} Vendor
+                    </span>
+                  </div>
+                )}
+
+                {/* Vendor Quotes Ranking List */}
+                <div className="space-y-1.5 pt-1">
+                  {sortedQuotes.map((quote, idx) => {
+                    const isCheapest = idx === 0 && sortedQuotes.length > 1;
+                    const diff = quote.price - stats.minPrice;
+                    const lembarPrice = quote.pricePerSubUnit || Math.round(quote.price / subCount);
+
+                    return (
+                      <div
+                        key={quote.id}
+                        className={`p-2.5 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                          isCheapest
+                            ? 'bg-emerald-50 border-emerald-300'
+                            : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900">{quote.supplierName}</span>
+                            {isCheapest && (
+                              <span className="text-[10px] font-bold bg-emerald-600 text-white px-1.5 py-0.2 rounded uppercase">
+                                Termurah
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2">
+                            <span>~{formatRupiah(lembarPrice)}/{subName}</span>
+                            {quote.discountPercent ? (
+                              <span className="text-emerald-700 font-bold">Diskon {quote.discountPercent}%</span>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className={`font-extrabold text-sm ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
+                            {formatRupiah(quote.price)}
+                          </span>
+                          {!isCheapest && diff > 0 && (
+                            <span className="block text-[10px] font-semibold text-rose-600">
+                              +{formatRupiah(diff)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* DESKTOP & MOBILE TABLE VIEW */}
+      <div className={`overflow-x-auto max-w-full ${mobileViewStyle === 'table' ? 'block' : 'hidden sm:block'}`}>
         <table className="w-full text-left text-xs border-collapse">
           <thead>
             <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
