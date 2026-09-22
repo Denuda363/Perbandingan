@@ -1,0 +1,6 @@
+{
+  "name": "Perbandingan Harga Supplier",
+  "description": "Aplikasi perbandingan harga produk antar supplier secara cepat, akurat, dan responsif untuk PC dan mobile.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
