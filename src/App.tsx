@@ -32,11 +32,23 @@ import { ExcelImportModal } from './components/ExcelImportModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import {
+  subscribeToProducts,
+  subscribeToSuppliers,
+  saveProductToFirestore,
+  deleteProductFromFirestore,
+  saveSupplierToFirestore,
+  deleteSupplierFromFirestore,
+  batchSaveToFirestore,
+  seedInitialDataIfEmpty,
+} from './services/firebaseService';
 
 const STORAGE_KEY_PRODUCTS = 'harga_vendor_products_v1';
 const STORAGE_KEY_SUPPLIERS = 'harga_vendor_suppliers_v1';
 
 export default function App() {
+  const [syncStatus, setSyncStatus] = useState<'connected' | 'syncing' | 'offline' | 'error'>('syncing');
+
   // State: Products and Suppliers loaded from localStorage or initialized
   const [products, setProducts] = useState<Product[]>(() => {
     try {
@@ -89,7 +101,59 @@ export default function App() {
     }, 3000);
   };
 
-  // Persist to localStorage
+  // Real-time synchronization with Firebase Firestore
+  useEffect(() => {
+    let unsubProducts = () => {};
+    let unsubSuppliers = () => {};
+
+    async function initFirebaseSync() {
+      try {
+        setSyncStatus('syncing');
+        // If Firestore is completely fresh and empty, seed initial master catalog
+        await seedInitialDataIfEmpty(INITIAL_PRODUCTS, INITIAL_SUPPLIERS);
+
+        // Realtime listener for products
+        unsubProducts = subscribeToProducts(
+          (remoteProducts) => {
+            if (remoteProducts.length > 0) {
+              setProducts(remoteProducts);
+            }
+            setSyncStatus('connected');
+          },
+          (err) => {
+            console.error('Realtime products listener error:', err);
+            setSyncStatus(navigator.onLine ? 'error' : 'offline');
+          }
+        );
+
+        // Realtime listener for suppliers
+        unsubSuppliers = subscribeToSuppliers(
+          (remoteSuppliers) => {
+            if (remoteSuppliers.length > 0) {
+              setSuppliers(remoteSuppliers);
+            }
+            setSyncStatus('connected');
+          },
+          (err) => {
+            console.error('Realtime suppliers listener error:', err);
+            setSyncStatus(navigator.onLine ? 'error' : 'offline');
+          }
+        );
+      } catch (e) {
+        console.error('Firebase sync init failed:', e);
+        setSyncStatus(navigator.onLine ? 'error' : 'offline');
+      }
+    }
+
+    initFirebaseSync();
+
+    return () => {
+      unsubProducts();
+      unsubSuppliers();
+    };
+  }, []);
+
+  // Persist to localStorage as offline fallback
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(products));
@@ -162,9 +226,15 @@ export default function App() {
     initialQuote?: { supplierName: string; price: number; notes?: string }
   ) => {
     if (productToEdit) {
-      // Edit existing product
+      const updatedProduct: Product = {
+        ...productToEdit,
+        ...productData,
+      };
       setProducts((prev) =>
-        prev.map((p) => (p.id === productToEdit.id ? ({ ...p, ...productData } as Product) : p))
+        prev.map((p) => (p.id === productToEdit.id ? updatedProduct : p))
+      );
+      saveProductToFirestore(updatedProduct).catch((err) =>
+        console.error('Failed to save product to Firestore:', err)
       );
       showToast('Data produk berhasil diperbarui');
     } else {
@@ -184,6 +254,9 @@ export default function App() {
             paymentTerms: 'Tempo 30 Hari',
           };
           setSuppliers((prev) => [...prev, matchedSup!]);
+          saveSupplierToFirestore(matchedSup).catch((err) =>
+            console.error('Failed to save new supplier to Firestore:', err)
+          );
         }
 
         newQuotes.push({
@@ -212,6 +285,9 @@ export default function App() {
       };
 
       setProducts((prev) => [newProduct, ...prev]);
+      saveProductToFirestore(newProduct).catch((err) =>
+        console.error('Failed to save new product to Firestore:', err)
+      );
       showToast('Produk baru berhasil ditambahkan');
     }
   };
@@ -219,6 +295,9 @@ export default function App() {
   const handleDeleteProduct = (productId: string) => {
     if (confirm('Apakah Anda yakin ingin menghapus produk ini beserta seluruh data penawarannya?')) {
       setProducts((prev) => prev.filter((p) => p.id !== productId));
+      deleteProductFromFirestore(productId).catch((err) =>
+        console.error('Failed to delete product from Firestore:', err)
+      );
       showToast('Produk berhasil dihapus');
     }
   };
@@ -237,8 +316,13 @@ export default function App() {
           paymentTerms: 'Tempo 30 Hari',
         };
         setSuppliers((prev) => [...prev, newSup]);
+        saveSupplierToFirestore(newSup).catch((err) =>
+          console.error('Failed to save new supplier for quote to Firestore:', err)
+        );
       }
     }
+
+    let updatedTargetProduct: Product | null = null;
 
     setProducts((prev) =>
       prev.map((p) => {
@@ -268,27 +352,46 @@ export default function App() {
           }
         }
 
-        return {
+        const updated = {
           ...p,
           quotes: updatedQuotes,
         };
+        updatedTargetProduct = updated;
+        return updated;
       })
     );
+
+    if (updatedTargetProduct) {
+      saveProductToFirestore(updatedTargetProduct).catch((err) =>
+        console.error('Failed to save product with updated quotes to Firestore:', err)
+      );
+    }
 
     showToast('Penawaran harga supplier berhasil disimpan');
   };
 
   const handleDeleteQuote = (productId: string, quoteId: string) => {
     if (confirm('Hapus penawaran harga dari supplier ini?')) {
+      let updatedTargetProduct: Product | null = null;
+
       setProducts((prev) =>
         prev.map((p) => {
           if (p.id !== productId) return p;
-          return {
+          const updated = {
             ...p,
             quotes: p.quotes.filter((q) => q.id !== quoteId),
           };
+          updatedTargetProduct = updated;
+          return updated;
         })
       );
+
+      if (updatedTargetProduct) {
+        saveProductToFirestore(updatedTargetProduct).catch((err) =>
+          console.error('Failed to delete quote from Firestore product:', err)
+        );
+      }
+
       showToast('Penawaran berhasil dihapus');
     }
   };
@@ -296,19 +399,33 @@ export default function App() {
   // Handlers for Suppliers
   const handleSaveSupplier = (supplierData: Partial<Supplier>) => {
     if (supplierToEdit) {
+      const updatedSup: Supplier = { ...supplierToEdit, ...supplierData } as Supplier;
       setSuppliers((prev) =>
-        prev.map((s) => (s.id === supplierToEdit.id ? ({ ...s, ...supplierData } as Supplier) : s))
+        prev.map((s) => (s.id === supplierToEdit.id ? updatedSup : s))
       );
+      saveSupplierToFirestore(updatedSup).catch((err) =>
+        console.error('Failed to save supplier to Firestore:', err)
+      );
+
       // Also update quotes where supplierName matches
       setProducts((prev) =>
-        prev.map((p) => ({
-          ...p,
-          quotes: p.quotes.map((q) =>
-            q.supplierId === supplierToEdit.id
-              ? { ...q, supplierName: supplierData.name || q.supplierName }
-              : q
-          ),
-        }))
+        prev.map((p) => {
+          let hasMatch = false;
+          const updatedQuotes = p.quotes.map((q) => {
+            if (q.supplierId === supplierToEdit.id) {
+              hasMatch = true;
+              return { ...q, supplierName: supplierData.name || q.supplierName };
+            }
+            return q;
+          });
+          const updatedP = { ...p, quotes: updatedQuotes };
+          if (hasMatch) {
+            saveProductToFirestore(updatedP).catch((err) =>
+              console.error('Failed to update product supplier name in Firestore:', err)
+            );
+          }
+          return updatedP;
+        })
       );
       showToast('Data supplier berhasil diperbarui');
     } else {
@@ -323,6 +440,9 @@ export default function App() {
         notes: supplierData.notes,
       };
       setSuppliers((prev) => [...prev, newSup]);
+      saveSupplierToFirestore(newSup).catch((err) =>
+        console.error('Failed to save new supplier to Firestore:', err)
+      );
       showToast('Supplier baru berhasil didaftarkan');
     }
   };
@@ -330,16 +450,25 @@ export default function App() {
   const handleDeleteSupplier = (supplierId: string) => {
     if (confirm('Hapus supplier ini dari direktori?')) {
       setSuppliers((prev) => prev.filter((s) => s.id !== supplierId));
+      deleteSupplierFromFirestore(supplierId).catch((err) =>
+        console.error('Failed to delete supplier from Firestore:', err)
+      );
       showToast('Supplier berhasil dihapus');
     }
   };
 
   // Reset to initial realistic demo data
-  const handleResetDemoData = () => {
-    if (confirm('Kembalikan data ke contoh awal (termasuk Paracetamol PT Aman Farma & PT Kinariya)?')) {
+  const handleResetDemoData = async () => {
+    if (confirm('Kembalikan data ke contoh awal dan sinkronkan ke Firebase?')) {
       setProducts(INITIAL_PRODUCTS);
       setSuppliers(INITIAL_SUPPLIERS);
-      showToast('Data contoh berhasil dipulihkan');
+      try {
+        await batchSaveToFirestore(INITIAL_PRODUCTS, INITIAL_SUPPLIERS);
+        showToast('Data contoh berhasil dipulihkan & disinkronkan ke Firebase');
+      } catch (err) {
+        console.error('Failed to reseed Firebase:', err);
+        showToast('Data lokal berhasil dipulihkan');
+      }
     }
   };
 
@@ -501,6 +630,9 @@ export default function App() {
 
     setSuppliers(nextSuppliers);
     setProducts(nextProducts);
+    batchSaveToFirestore(nextProducts, nextSuppliers).catch((err) =>
+      console.error('Failed to batch save imported Excel data to Firestore:', err)
+    );
 
     const summaryParts: string[] = [];
     if (productsAdded > 0) summaryParts.push(`${productsAdded} produk baru`);
@@ -542,6 +674,7 @@ export default function App() {
         onExportCSV={() => exportProductsToCSV(products)}
         productCount={products.length}
         onOpenInstallModal={() => setIsPWAInstallModalOpen(true)}
+        syncStatus={syncStatus}
       />
 
       {/* Main Content Area */}

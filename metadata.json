@@ -1,6 +1,6 @@
 {
   "name": "Perbandingan Harga Supplier",
-  "description": "Aplikasi perbandingan harga produk obat antar supplier (PWA) yang dapat dipasang di smartphone, offline ready, cepat, dan responsif.",
+  "description": "Aplikasi perbandingan harga produk obat antar supplier dengan database online realtime Firebase, PWA smartphone, dan impor Excel.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

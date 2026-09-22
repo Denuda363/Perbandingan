@@ -16,6 +16,7 @@ import {
   Smartphone
 } from 'lucide-react';
 import { ViewMode } from '../types';
+import { CloudSyncStatus } from './CloudSyncStatus';
 
 interface NavbarProps {
   currentView: ViewMode;
@@ -30,6 +31,7 @@ interface NavbarProps {
   onExportCSV: () => void;
   productCount: number;
   onOpenInstallModal?: () => void;
+  syncStatus?: 'connected' | 'syncing' | 'offline' | 'error';
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -45,6 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onExportCSV,
   productCount,
   onOpenInstallModal,
+  syncStatus = 'connected',
 }) => {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isMobileExcelSheetOpen, setIsMobileExcelSheetOpen] = useState(false);
@@ -118,6 +121,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Realtime Cloud Status */}
+            <CloudSyncStatus status={syncStatus} />
+
             {/* Install PWA Button */}
             {onOpenInstallModal && (
               <button
