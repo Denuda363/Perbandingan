@@ -344,6 +344,285 @@ export function downloadCompleteExcelTemplate(): void {
 }
 
 /**
+ * Generates and downloads template specifically for Products & Quotes
+ */
+export function downloadProductOnlyTemplate(): void {
+  const wb = XLSX.utils.book_new();
+
+  const productData = [
+    {
+      'Nama Produk *': 'Paracetamol 500mg',
+      'Company Produk / Pabrik': 'PT Kimia Farma Tbk',
+      'Kemasan': 'Tablet 10 x 10',
+      'Isi Kemasan': '1 Box = 10 Lembar',
+      'Kategori': 'Analgesik & Antipiretik',
+      'Satuan Dasar': 'Box',
+      'Nama Supplier *': 'PT Kinariya',
+      'HNA (Rp)': 11000,
+      'Diskon (%)': 13.64,
+      'HARGA JADI Box (Rp) *': 9500,
+      'MOQ (Min Order)': 5,
+      'Lead Time (Hari)': 1,
+      'Status Stok (Tersedia/Habis)': 'Tersedia',
+      'Catatan Penawaran': 'Harga promo kuartal',
+    },
+    {
+      'Nama Produk *': 'Paracetamol 500mg',
+      'Company Produk / Pabrik': 'PT Kimia Farma Tbk',
+      'Kemasan': 'Tablet 10 x 10',
+      'Isi Kemasan': '1 Box = 10 Lembar',
+      'Kategori': 'Analgesik & Antipiretik',
+      'Satuan Dasar': 'Box',
+      'Nama Supplier *': 'PT Aman Farma',
+      'HNA (Rp)': 11000,
+      'Diskon (%)': 9.09,
+      'HARGA JADI Box (Rp) *': 10000,
+      'MOQ (Min Order)': 1,
+      'Lead Time (Hari)': 1,
+      'Status Stok (Tersedia/Habis)': 'Tersedia',
+      'Catatan Penawaran': 'Ready stock eceran',
+    },
+    {
+      'Nama Produk *': 'Amoxicillin 500mg',
+      'Company Produk / Pabrik': 'PT Sanbe Farma',
+      'Kemasan': 'Kaplet 10 x 10',
+      'Isi Kemasan': '1 Box = 10 Lembar',
+      'Kategori': 'Antibiotik',
+      'Satuan Dasar': 'Box',
+      'Nama Supplier *': 'PT Medika Jaya Abadi',
+      'HNA (Rp)': 40000,
+      'Diskon (%)': 15.0,
+      'HARGA JADI Box (Rp) *': 34000,
+      'MOQ (Min Order)': 2,
+      'Lead Time (Hari)': 1,
+      'Status Stok (Tersedia/Habis)': 'Tersedia',
+      'Catatan Penawaran': 'Perlu SP Obat Keras',
+    }
+  ];
+
+  const ws = XLSX.utils.json_to_sheet(productData);
+  ws['!cols'] = [
+    { wch: 26 }, { wch: 24 }, { wch: 18 }, { wch: 22 }, 
+    { wch: 22 }, { wch: 14 }, { wch: 24 }, { wch: 14 }, 
+    { wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, 
+    { wch: 16 }, { wch: 30 }
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Produk & Penawaran');
+  XLSX.writeFile(wb, 'Template_Produk_Harga_PBF.xlsx');
+}
+
+/**
+ * Generates and downloads template specifically for Suppliers Directory
+ */
+export function downloadSupplierOnlyTemplate(): void {
+  const wb = XLSX.utils.book_new();
+
+  const supplierData = [
+    {
+      'Nama Supplier *': 'PT Aman Farma',
+      'Kontak Person': 'Ibu Dewi Lestari',
+      'No. Telepon / WA': '0812-8899-1122',
+      'Email': 'order@amanfarma.co.id',
+      'Alamat': 'Kawasan Industri Pulo Gadung Kav. 4, Jakarta Timur',
+      'Syarat Pembayaran (TOP)': 'Tempo 30 Hari',
+      'Rating (1-5)': 4.7,
+      'Catatan Supplier': 'Distributor PBF resmi, produk lengkap',
+    },
+    {
+      'Nama Supplier *': 'PT Kinariya',
+      'Kontak Person': 'Bpk. Ahmad Fauzi',
+      'No. Telepon / WA': '0813-7766-5544',
+      'Email': 'sales@kinariya.com',
+      'Alamat': 'Jl. Daan Mogot KM 14 No. 88, Jakarta Barat',
+      'Syarat Pembayaran (TOP)': 'Tempo 14 Hari / COD',
+      'Rating (1-5)': 4.9,
+      'Catatan Supplier': 'Harga bersaing, same-day delivery',
+    },
+    {
+      'Nama Supplier *': 'PT Medika Jaya Abadi',
+      'Kontak Person': 'Bpk. Hendra Saputra',
+      'No. Telepon / WA': '0812-9988-7766',
+      'Email': 'order@medikajaya.com',
+      'Alamat': 'Jl. R.E. Martadinata No. 50, Surabaya',
+      'Syarat Pembayaran (TOP)': 'Tempo 30 Hari',
+      'Rating (1-5)': 4.6,
+      'Catatan Supplier': 'Spesialis obat generik dan etikal',
+    }
+  ];
+
+  const ws = XLSX.utils.json_to_sheet(supplierData);
+  ws['!cols'] = [
+    { wch: 26 }, { wch: 20 }, { wch: 18 }, { wch: 24 },
+    { wch: 40 }, { wch: 24 }, { wch: 12 }, { wch: 35 }
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Master Supplier');
+  XLSX.writeFile(wb, 'Template_Master_Supplier_PBF.xlsx');
+}
+
+/**
+ * Returns mock pre-parsed sample data for immediate test drive on mobile
+ */
+export function getSampleExcelData(): ExcelParseResult {
+  return {
+    parsedQuotes: [
+      {
+        name: 'Paracetamol 500mg',
+        company: 'PT Kimia Farma Tbk',
+        packaging: 'Tablet 10 x 10',
+        packContent: '1 Box = 10 Lembar',
+        subUnitCount: 10,
+        subUnitName: 'lembar',
+        category: 'Analgesik & Antipiretik',
+        defaultUnit: 'Box',
+        sku: 'PCT-500-BX',
+        supplierName: 'PT Kinariya',
+        hna: 11000,
+        discountPercent: 13.64,
+        price: 9500,
+        pricePerSubUnit: 950,
+        priceWithPpn: 10545,
+        moq: 5,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Promo kuartal, ready stock',
+      },
+      {
+        name: 'Paracetamol 500mg',
+        company: 'PT Kimia Farma Tbk',
+        packaging: 'Tablet 10 x 10',
+        packContent: '1 Box = 10 Lembar',
+        subUnitCount: 10,
+        subUnitName: 'lembar',
+        category: 'Analgesik & Antipiretik',
+        defaultUnit: 'Box',
+        sku: 'PCT-500-BX',
+        supplierName: 'PT Aman Farma',
+        hna: 11000,
+        discountPercent: 9.09,
+        price: 10000,
+        pricePerSubUnit: 1000,
+        priceWithPpn: 11100,
+        moq: 1,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Bisa beli eceran 1 box',
+      },
+      {
+        name: 'Amoxicillin 500mg',
+        company: 'PT Sanbe Farma',
+        packaging: 'Kaplet 10 x 10',
+        packContent: '1 Box = 10 Lembar',
+        subUnitCount: 10,
+        subUnitName: 'lembar',
+        category: 'Antibiotik',
+        defaultUnit: 'Box',
+        sku: 'AMX-500-BX',
+        supplierName: 'PT Medika Jaya Abadi',
+        hna: 40000,
+        discountPercent: 15.0,
+        price: 34000,
+        pricePerSubUnit: 3400,
+        priceWithPpn: 37740,
+        moq: 2,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Syarat SP Obat Keras',
+      },
+      {
+        name: 'Omeprazole 20mg',
+        company: 'PT Dexa Medica',
+        packaging: 'Kapsul 3 x 10',
+        packContent: '1 Box = 3 Lembar',
+        subUnitCount: 3,
+        subUnitName: 'lembar',
+        category: 'Saluran Cerna',
+        defaultUnit: 'Box',
+        sku: 'OMZ-20-BX',
+        supplierName: 'PT Kinariya',
+        hna: 25000,
+        discountPercent: 12.0,
+        price: 22000,
+        pricePerSubUnit: 7333,
+        priceWithPpn: 24420,
+        moq: 3,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Fast-moving digest product',
+      },
+      {
+        name: 'Vitamin C 500mg',
+        company: 'PT Kalbe Farma',
+        packaging: 'Botol 100 Tablet',
+        packContent: '1 Botol = 100 Tab',
+        subUnitCount: 100,
+        subUnitName: 'tablet',
+        category: 'Vitamin & Suplemen',
+        defaultUnit: 'Botol',
+        sku: 'VTC-500-BT',
+        supplierName: 'PT Sehat Sentosa Farmasi',
+        hna: 55000,
+        discountPercent: 10.0,
+        price: 49500,
+        pricePerSubUnit: 495,
+        priceWithPpn: 54945,
+        moq: 1,
+        leadTimeDays: 2,
+        inStock: true,
+        notes: 'Suplemen daya tahan tubuh',
+      }
+    ],
+    parsedSuppliers: [
+      {
+        name: 'PT Kinariya',
+        contactPerson: 'Bpk. Ahmad Fauzi',
+        phone: '0813-7766-5544',
+        email: 'sales@kinariya.com',
+        address: 'Jl. Daan Mogot KM 14 No. 88, Jakarta Barat',
+        paymentTerms: 'Tempo 14 Hari / COD',
+        rating: 4.9,
+        notes: 'Harga sangat kompetitif, same-day delivery',
+      },
+      {
+        name: 'PT Aman Farma',
+        contactPerson: 'Ibu Dewi Lestari',
+        phone: '0812-8899-1122',
+        email: 'order@amanfarma.co.id',
+        address: 'Kawasan Industri Pulo Gadung Kav. 4, Jakarta Timur',
+        paymentTerms: 'Tempo 30 Hari',
+        rating: 4.7,
+        notes: 'Distributor PBF resmi dan retur mudah',
+      },
+      {
+        name: 'PT Medika Jaya Abadi',
+        contactPerson: 'Bpk. Hendra Saputra',
+        phone: '0812-9988-7766',
+        email: 'order@medikajaya.com',
+        address: 'Jl. R.E. Martadinata No. 50, Surabaya',
+        paymentTerms: 'Tempo 30 Hari',
+        rating: 4.6,
+        notes: 'Spesialis obat generik dan etikal',
+      },
+      {
+        name: 'PT Sehat Sentosa Farmasi',
+        contactPerson: 'Bpk. Hendra Wijaya',
+        phone: '0811-2233-4455',
+        email: 'hendra@sehatsentosa.com',
+        address: 'Jl. Soekarno Hatta No. 205, Bandung',
+        paymentTerms: 'Tempo 45 Hari',
+        rating: 4.5,
+        notes: 'Spesialis vitamin dan injeksi',
+      }
+    ],
+    errors: [],
+    warnings: [],
+    sheetNames: ['Produk & Penawaran', 'Master Supplier'],
+    totalRows: 5,
+  };
+}
+
+/**
  * Exports current app data into a complete formatted Excel (.xlsx) file
  */
 export function exportAppToExcel(products: Product[], suppliers: Supplier[]): void {

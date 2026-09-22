@@ -138,14 +138,25 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {/* Mobile Excel Actions Button */}
+            {/* Mobile Direct Import Excel Button */}
+            <button
+              id="btn-mobile-import-direct"
+              onClick={onOpenImportExcel}
+              className="sm:hidden inline-flex items-center gap-1 px-2.5 py-2 text-xs font-bold text-emerald-900 bg-emerald-50 active:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors cursor-pointer shadow-2xs h-9"
+              title="Import Data Produk & Supplier dari Excel"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              <span>Import</span>
+            </button>
+
+            {/* Mobile More Excel Actions Button (Template & Export) */}
             <button
               id="btn-mobile-excel"
               onClick={() => setIsMobileExcelSheetOpen(true)}
-              className="sm:hidden inline-flex items-center justify-center w-9 h-9 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors cursor-pointer"
-              title="Menu Excel: Import, Template & Ekspor"
+              className="sm:hidden inline-flex items-center justify-center w-9 h-9 text-slate-600 bg-white hover:bg-slate-100 active:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer h-9"
+              title="Menu Excel: Template & Ekspor"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+              <Download className="w-4 h-4 text-slate-600" />
             </button>
 
             {/* Import Excel Button (Desktop / Tablet) */}

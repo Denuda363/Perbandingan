@@ -80,24 +80,24 @@ export const SupplierDirectory: React.FC<SupplierDirectoryProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+        <div className="flex items-center gap-2 self-stretch sm:self-auto flex-wrap">
           {onOpenImportExcel && (
             <button
               onClick={onOpenImportExcel}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg shadow-2xs transition-colors cursor-pointer"
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 border border-emerald-300 rounded-xl shadow-2xs transition-colors cursor-pointer min-h-[42px]"
               title="Import data supplier dari Excel"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Import Excel</span>
+              <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+              <span>Import Supplier (.xlsx)</span>
             </button>
           )}
 
           <button
             onClick={onAddSupplier}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors cursor-pointer"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-xl shadow-xs transition-colors cursor-pointer min-h-[42px]"
           >
             <Plus className="w-4 h-4" />
-            <span>Tambah Supplier Baru</span>
+            <span>Tambah Supplier</span>
           </button>
         </div>
       </div>
