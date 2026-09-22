@@ -29,6 +29,9 @@ import { ProductModal } from './components/ProductModal';
 import { AddQuoteModal } from './components/AddQuoteModal';
 import { SupplierModal } from './components/SupplierModal';
 import { ExcelImportModal } from './components/ExcelImportModal';
+import { PWAInstallModal } from './components/PWAInstallModal';
+import { PWAInstallBanner } from './components/PWAInstallBanner';
+import { OfflineIndicator } from './components/OfflineIndicator';
 
 const STORAGE_KEY_PRODUCTS = 'harga_vendor_products_v1';
 const STORAGE_KEY_SUPPLIERS = 'harga_vendor_suppliers_v1';
@@ -74,6 +77,7 @@ export default function App() {
   const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isPWAInstallModalOpen, setIsPWAInstallModalOpen] = useState(false);
 
   // Toast message
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -514,6 +518,9 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 pb-20 sm:pb-12">
       
+      {/* Mobile PWA Install Banner */}
+      <PWAInstallBanner onOpenInstallModal={() => setIsPWAInstallModalOpen(true)} />
+
       {/* Top Navbar */}
       <Navbar
         currentView={currentView}
@@ -534,6 +541,7 @@ export default function App() {
         onExportExcel={() => exportAppToExcel(products, suppliers)}
         onExportCSV={() => exportProductsToCSV(products)}
         productCount={products.length}
+        onOpenInstallModal={() => setIsPWAInstallModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -819,6 +827,13 @@ export default function App() {
         onClose={() => setIsImportModalOpen(false)}
         onConfirmImport={handleConfirmImport}
       />
+
+      <PWAInstallModal
+        isOpen={isPWAInstallModalOpen}
+        onClose={() => setIsPWAInstallModalOpen(false)}
+      />
+
+      <OfflineIndicator />
 
     </div>
   );

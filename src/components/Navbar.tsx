@@ -12,7 +12,8 @@ import {
   TrendingDown,
   FileSpreadsheet,
   Upload,
-  ChevronDown
+  ChevronDown,
+  Smartphone
 } from 'lucide-react';
 import { ViewMode } from '../types';
 
@@ -28,6 +29,7 @@ interface NavbarProps {
   onExportExcel: () => void;
   onExportCSV: () => void;
   productCount: number;
+  onOpenInstallModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -42,6 +44,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onExportExcel,
   onExportCSV,
   productCount,
+  onOpenInstallModal,
 }) => {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isMobileExcelSheetOpen, setIsMobileExcelSheetOpen] = useState(false);
@@ -65,8 +68,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           
           {/* Logo & Brand */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-sm shadow-emerald-200">
-              <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
+            <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-sm shadow-emerald-200 border border-emerald-500/30 shrink-0 bg-emerald-700">
+              <img
+                src="/pwa-192x192.png"
+                alt="Logo HargaVendor"
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
             </div>
             <div>
               <div className="flex items-center gap-1.5 sm:gap-2">
@@ -110,6 +118,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Install PWA Button */}
+            {onOpenInstallModal && (
+              <button
+                id="btn-nav-install-pwa"
+                onClick={onOpenInstallModal}
+                title="Pasang aplikasi di Smartphone / Layar Utama"
+                className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 text-xs font-bold text-emerald-950 bg-emerald-100/90 hover:bg-emerald-200 border border-emerald-300/80 rounded-lg transition-all cursor-pointer shadow-2xs group"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-emerald-700 group-hover:scale-110 transition-transform shrink-0" />
+                <span className="hidden sm:inline">Pasang di HP</span>
+                <span className="sm:hidden">App</span>
+              </button>
+            )}
+
             {/* Mobile Excel Actions Button */}
             <button
               id="btn-mobile-excel"
@@ -327,6 +349,32 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             <div className="space-y-2 py-3">
+              {onOpenInstallModal && (
+                <button
+                  onClick={() => {
+                    setIsMobileExcelSheetOpen(false);
+                    onOpenInstallModal();
+                  }}
+                  className="w-full p-3 text-left rounded-xl bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 text-white flex items-center gap-3 transition-colors cursor-pointer shadow-md border border-emerald-500/30"
+                >
+                  <div className="w-10 h-10 rounded-xl overflow-hidden border border-emerald-400/40 shrink-0 bg-emerald-800">
+                    <img
+                      src="/pwa-192x192.png"
+                      alt="Icon CekHargaPBF"
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-xs text-white block">Pasang di Layar Utama HP</span>
+                      <span className="bg-emerald-500/30 text-emerald-300 text-[9px] font-bold px-1.5 py-0.2 rounded-sm">PWA</span>
+                    </div>
+                    <span className="text-[11px] text-slate-300">Akses cepat tanpa browser & offline ready</span>
+                  </div>
+                </button>
+              )}
+
               <button
                 onClick={() => {
                   setIsMobileExcelSheetOpen(false);
