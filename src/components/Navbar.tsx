@@ -251,15 +251,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Input Penawaran</span>
             </button>
 
-            {/* Add Product Button */}
+            {/* Add Product Button (Desktop & Tablet) */}
             <button
               id="btn-nav-add-product"
               onClick={onOpenAddProduct}
-              className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-2 text-xs sm:text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-lg shadow-xs shadow-emerald-200 transition-all cursor-pointer h-9"
+              className="hidden sm:inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-lg shadow-xs shadow-emerald-200 transition-all cursor-pointer h-9"
             >
               <Plus className="w-4 h-4" />
-              <span className="hidden xs:inline">Tambah Produk</span>
-              <span className="xs:hidden">Produk</span>
+              <span>Tambah Produk</span>
             </button>
           </div>
         </div>

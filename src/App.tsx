@@ -859,7 +859,7 @@ export default function App() {
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 flex items-center justify-between shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 pt-2 pb-safe flex items-center justify-around shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
         <button
           onClick={() => setCurrentView('cards')}
           className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-1.5 rounded-xl text-[11px] font-medium transition-all ${
