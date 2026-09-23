@@ -10,7 +10,7 @@ import {
   limit,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Product, Supplier, SupplierQuote } from '../types';
+import { Product, Supplier, SupplierQuote, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
 
 // Helper to remove undefined properties before saving to Firestore
 function sanitizeForFirestore<T>(obj: T): T {
@@ -19,6 +19,8 @@ function sanitizeForFirestore<T>(obj: T): T {
 
 const PRODUCTS_COLLECTION = 'products';
 const SUPPLIERS_COLLECTION = 'suppliers';
+const SETTINGS_COLLECTION = 'settings';
+const APP_CONFIG_DOC_ID = 'app_config';
 
 /**
  * Subscribe to real-time updates for products
@@ -154,4 +156,42 @@ export async function seedInitialDataIfEmpty(
     console.error('Failed to seed initial Firestore data:', err);
     return false;
   }
+}
+
+/**
+  * Subscribe to real-time updates for application settings (PPN, margin)
+  */
+export function subscribeToSettings(
+  onUpdate: (settings: AppSettings) => void,
+  onError?: (err: Error) => void
+) {
+  const docRef = doc(db, SETTINGS_COLLECTION, APP_CONFIG_DOC_ID);
+  return onSnapshot(
+    docRef,
+    (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as Partial<AppSettings>;
+        onUpdate({
+          ...DEFAULT_APP_SETTINGS,
+          ...data,
+        });
+      } else {
+        // Document does not exist yet, fallback to default
+        onUpdate(DEFAULT_APP_SETTINGS);
+      }
+    },
+    (err) => {
+      console.error('Realtime settings listener error:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+/**
+  * Save application settings (PPN & Margin) to Firestore
+  */
+export async function saveSettingsToFirestore(settings: AppSettings): Promise<void> {
+  const docRef = doc(db, SETTINGS_COLLECTION, APP_CONFIG_DOC_ID);
+  const cleanData = sanitizeForFirestore(settings);
+  await setDoc(docRef, cleanData, { merge: true });
 }

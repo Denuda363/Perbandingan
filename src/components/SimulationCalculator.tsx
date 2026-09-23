@@ -11,17 +11,19 @@ import {
   Building2,
   Check
 } from 'lucide-react';
-import { Product, Supplier } from '../types';
-import { formatRupiah, getProductPriceStats } from '../utils/formatters';
+import { Product, Supplier, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
+import { formatRupiah, getProductPriceStats, calculateSellingPrice } from '../utils/formatters';
 
 interface SimulationCalculatorProps {
   products: Product[];
   suppliers: Supplier[];
+  settings?: AppSettings;
 }
 
 export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
   products,
   suppliers,
+  settings = DEFAULT_APP_SETTINGS,
 }) => {
   // State: map of productId -> quantity to buy
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
@@ -167,13 +169,13 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
 
       {/* Result Cards: Savings Summary */}
       {selectedProducts.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
           {/* Card 1: Total Biaya Teroptimasi */}
           <div className="bg-white p-5 rounded-xl border border-emerald-300 bg-linear-to-br from-white to-emerald-50/60 shadow-xs">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
-                Total Biaya Termurah (Split)
+                Total Modal Beli Termurah
               </span>
               <Award className="w-4 h-4 text-emerald-600" />
             </div>
@@ -201,7 +203,23 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
             </p>
           </div>
 
-          {/* Card 3: Total Produk & Item */}
+          {/* Card 3: Rekomendasi Nilai Jual (+ Margin) */}
+          <div className="bg-white p-5 rounded-xl border border-purple-200 bg-linear-to-br from-white to-purple-50/50 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-purple-800 uppercase tracking-wider">
+                Nilai Jual (+{settings.marginPercent}% Margin)
+              </span>
+              <Calculator className="w-4 h-4 text-purple-600" />
+            </div>
+            <p className="text-2xl font-extrabold text-purple-700 mt-2">
+              {formatRupiah(calculateSellingPrice(optimizedTotalCost, settings).sellingPrice)}
+            </p>
+            <p className="text-xs text-purple-600 mt-1">
+              Potensi laba: <strong className="text-purple-800 font-bold">+{formatRupiah(calculateSellingPrice(optimizedTotalCost, settings).profitPerUnit)}</strong>
+            </p>
+          </div>
+
+          {/* Card 4: Total Produk & Item */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">

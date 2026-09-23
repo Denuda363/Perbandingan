@@ -1,4 +1,4 @@
-import { Product, SupplierQuote } from '../types';
+import { Product, SupplierQuote, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
 
 export function formatRupiah(value: number): string {
   if (isNaN(value)) return 'Rp 0';
@@ -13,6 +13,62 @@ export function formatRupiah(value: number): string {
 export function formatNumber(value: number): string {
   if (isNaN(value)) return '0';
   return new Intl.NumberFormat('id-ID').format(value);
+}
+
+export interface SellingPriceCalculation {
+  costPrice: number; // Harga Beli / Modal Dasar
+  ppnRate: number; // e.g. 0.11
+  ppnAmount: number; // Nilai PPN dalam Rupiah
+  costWithPpn: number; // Modal + PPN
+  marginPercent: number; // e.g. 25%
+  marginAmount: number; // Nilai Margin / Keuntungan
+  sellingPrice: number; // Harga Rekomendasi Jual Akhir (+ Margin)
+  profitPerUnit: number; // Laba Kotor per Unit
+}
+
+/**
+ * Menghitung Harga Jual yang sudah di-plus Margin dan PPN sesuai pengaturan pengguna
+ */
+export function calculateSellingPrice(
+  costPrice: number,
+  settings: AppSettings = DEFAULT_APP_SETTINGS
+): SellingPriceCalculation {
+  const safeCost = Math.max(0, costPrice || 0);
+  const ppnRate = settings.ppnEnabled ? Math.max(0, settings.ppnPercent || 0) / 100 : 0;
+  const ppnAmount = Math.round(safeCost * ppnRate);
+  const costWithPpn = safeCost + ppnAmount;
+  const marginRate = Math.max(0, settings.marginPercent || 0) / 100;
+
+  let baseForMargin = settings.marginCalculationMode === 'on_cost_plus_ppn' ? costWithPpn : safeCost;
+  let marginAmount = Math.round(baseForMargin * marginRate);
+  
+  let rawSellingPrice = baseForMargin + marginAmount;
+  if (settings.marginCalculationMode === 'markup' && settings.ppnEnabled) {
+    // Modal + Margin + PPN
+    rawSellingPrice = safeCost + marginAmount + ppnAmount;
+  }
+
+  let finalSellingPrice = Math.round(rawSellingPrice);
+  if (settings.roundingOption === 'hundred') {
+    finalSellingPrice = Math.ceil(finalSellingPrice / 100) * 100;
+  } else if (settings.roundingOption === 'thousand') {
+    finalSellingPrice = Math.ceil(finalSellingPrice / 1000) * 1000;
+  }
+
+  // Profit per unit adalah harga jual dikurang total modal yang dikeluarkan (termasuk PPN jika kena PPN)
+  const actualCostOutflow = settings.ppnEnabled ? costWithPpn : safeCost;
+  const profitPerUnit = finalSellingPrice - actualCostOutflow;
+
+  return {
+    costPrice: safeCost,
+    ppnRate,
+    ppnAmount,
+    costWithPpn,
+    marginPercent: settings.marginPercent || 0,
+    marginAmount,
+    sellingPrice: finalSellingPrice,
+    profitPerUnit,
+  };
 }
 
 export interface ProductPriceStats {

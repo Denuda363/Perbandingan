@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { 
   X, 
   Upload, 
@@ -20,7 +20,14 @@ import {
   Clock,
   Info,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Trophy,
+  Award,
+  Copy,
+  Search,
+  Zap,
+  TrendingDown,
+  Tag
 } from 'lucide-react';
 import { 
   parseExcelUpload, 
@@ -28,9 +35,12 @@ import {
   downloadProductOnlyTemplate,
   downloadSupplierOnlyTemplate,
   getSampleExcelData,
+  groupImportedQuotesByProduct,
+  ImportedProductComparison,
   ExcelParseResult 
 } from '../utils/excelUtils';
-import { formatRupiah } from '../utils/formatters';
+import { formatRupiah, calculateSellingPrice } from '../utils/formatters';
+import { AppSettings, DEFAULT_APP_SETTINGS } from '../types';
 
 interface ExcelImportModalProps {
   isOpen: boolean;
@@ -39,12 +49,14 @@ interface ExcelImportModalProps {
     parsedResult: ExcelParseResult, 
     importMode: 'merge' | 'overwrite'
   ) => void;
+  settings?: AppSettings;
 }
 
 export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   isOpen,
   onClose,
   onConfirmImport,
+  settings = DEFAULT_APP_SETTINGS,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeScreenTab, setActiveScreenTab] = useState<'upload' | 'templates' | 'guide'>('upload');
@@ -52,12 +64,13 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   const [isParsing, setIsParsing] = useState(false);
   const [parseResult, setParseResult] = useState<ExcelParseResult | null>(null);
   const [importMode, setImportMode] = useState<'merge' | 'overwrite'>('merge');
-  const [previewTab, setPreviewTab] = useState<'products' | 'suppliers'>('products');
+  const [previewTab, setPreviewTab] = useState<'comparison' | 'products' | 'suppliers'>('comparison');
+  const [comparisonSearchQuery, setComparisonSearchQuery] = useState('');
+  const [comparisonFilter, setComparisonFilter] = useState<'all' | 'multi' | 'highest_savings'>('all');
+  const [copiedSummary, setCopiedSummary] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [isSampleDataLoaded, setIsSampleDataLoaded] = useState(false);
   const [showColumnDetails, setShowColumnDetails] = useState(false);
-
-  if (!isOpen) return null;
 
   const handleFileChange = async (file: File) => {
     if (!file) return;
@@ -69,7 +82,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     try {
       const res = await parseExcelUpload(file);
       setParseResult(res);
-      if (res.parsedQuotes.length === 0 && res.parsedSuppliers.length > 0) {
+      if (res.parsedQuotes.length > 0) {
+        setPreviewTab('comparison');
+      } else if (res.parsedSuppliers.length > 0) {
         setPreviewTab('suppliers');
       } else {
         setPreviewTab('products');
@@ -96,9 +111,97 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       setParseResult(sample);
       setIsSampleDataLoaded(true);
       setSelectedFile(new File(['sample'], 'Data_Contoh_Farmasi.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-      setPreviewTab('products');
+      setPreviewTab('comparison');
       setIsParsing(false);
     }, 250);
+  };
+
+  // Group quotes by product to enable quick side-by-side comparison & recommendation
+  const groupedProducts = useMemo(() => {
+    if (!parseResult || !parseResult.parsedQuotes) return [];
+    return groupImportedQuotesByProduct(parseResult.parsedQuotes);
+  }, [parseResult]);
+
+  // Summary statistics of comparison
+  const comparisonStats = useMemo(() => {
+    let totalSavingsPotential = 0;
+    let multiSupplierCount = 0;
+    const supplierCheapestCount: Record<string, number> = {};
+
+    groupedProducts.forEach((p) => {
+      if (p.supplierCount > 1) {
+        multiSupplierCount++;
+        totalSavingsPotential += p.priceDifference;
+      }
+      if (p.cheapestQuote && p.cheapestQuote.supplierName) {
+        const sName = p.cheapestQuote.supplierName;
+        supplierCheapestCount[sName] = (supplierCheapestCount[sName] || 0) + 1;
+      }
+    });
+
+    const topSuppliers = Object.entries(supplierCheapestCount)
+      .sort((a, b) => b[1] - a[1]);
+
+    return {
+      totalSavingsPotential,
+      multiSupplierCount,
+      topSuppliers,
+    };
+  }, [groupedProducts]);
+
+  // Filtered comparison list based on search and selected filter
+  const filteredGroupedProducts = useMemo(() => {
+    let list = groupedProducts;
+
+    if (comparisonSearchQuery.trim()) {
+      const q = comparisonSearchQuery.toLowerCase().trim();
+      list = list.filter((p) => 
+        p.productName.toLowerCase().includes(q) ||
+        (p.company && p.company.toLowerCase().includes(q)) ||
+        (p.category && p.category.toLowerCase().includes(q)) ||
+        p.quotes.some((quote) => quote.supplierName.toLowerCase().includes(q))
+      );
+    }
+
+    if (comparisonFilter === 'multi') {
+      list = list.filter((p) => p.supplierCount > 1);
+    } else if (comparisonFilter === 'highest_savings') {
+      list = list.filter((p) => p.priceDifference > 0);
+    }
+
+    return list;
+  }, [groupedProducts, comparisonSearchQuery, comparisonFilter]);
+
+  // Copy recommendation summary to clipboard
+  const handleCopySummary = () => {
+    if (groupedProducts.length === 0) return;
+    const dateStr = new Date().toLocaleDateString('id-ID', { dateStyle: 'medium' });
+    let text = `📋 REKOMENDASI HARGA SUPPLIER TERMURAH (IMPORT EXCEL)\n`;
+    text += `Tanggal: ${dateStr}\n`;
+    text += `Total Produk Dianalisis: ${groupedProducts.length} Produk\n`;
+    text += `Potensi Penghematan Tertinggi: ${formatRupiah(comparisonStats.totalSavingsPotential)}\n\n`;
+
+    groupedProducts.forEach((p, idx) => {
+      text += `${idx + 1}. ${p.productName}${p.company ? ` (${p.company})` : ''}\n`;
+      if (p.cheapestQuote) {
+        const sellingPrice = calculateSellingPrice(p.cheapestQuote.price, settings).sellingPrice;
+        text += `   👑 REKOMENDASI TERMURAH: ${p.cheapestQuote.supplierName}\n`;
+        text += `   • Modal Beli: ${formatRupiah(p.cheapestQuote.price)} / ${p.defaultUnit}\n`;
+        text += `   • Rekomendasi Jual: ${formatRupiah(sellingPrice)} (+${settings.marginPercent}%)\n`;
+        if (p.supplierCount > 1 && p.priceDifference > 0) {
+          text += `   • Penghematan: Hemat ${formatRupiah(p.priceDifference)} (-${p.savingsPercentage}%) vs ${p.highestQuote?.supplierName || 'vendor lain'}\n`;
+        }
+      }
+      if (p.supplierCount > 1) {
+        const others = p.quotes.map(q => `${q.supplierName}: ${formatRupiah(q.price)}`).join(', ');
+        text += `   • Semua Penawaran: ${others}\n`;
+      }
+      text += `\n`;
+    });
+
+    navigator.clipboard.writeText(text);
+    setCopiedSummary(true);
+    setTimeout(() => setCopiedSummary(false), 2500);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -147,6 +250,8 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         ? parseResult.parsedSuppliers.length 
         : new Set(parseResult.parsedQuotes.map(q => q.supplierName).filter(Boolean)).size)
     : 0;
+
+  if (!isOpen) return null;
 
   return (
     <div 
@@ -464,8 +569,22 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       {/* Preview Container */}
                       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
                         {/* Preview Tabs */}
-                        <div className="flex items-center justify-between bg-slate-100 p-1.5 border-b border-slate-200">
-                          <div className="flex items-center gap-1 w-full sm:w-auto">
+                        <div className="flex items-center justify-between bg-slate-100 p-1.5 border-b border-slate-200 flex-wrap gap-1">
+                          <div className="flex items-center gap-1 w-full sm:w-auto flex-wrap">
+                            {hasQuotes && (
+                              <button
+                                type="button"
+                                onClick={() => setPreviewTab('comparison')}
+                                className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                  previewTab === 'comparison'
+                                    ? 'bg-emerald-700 text-white shadow-xs ring-1 ring-emerald-800'
+                                    : 'text-slate-700 hover:text-slate-900 bg-emerald-50/70'
+                                }`}
+                              >
+                                <Trophy className={`w-3.5 h-3.5 ${previewTab === 'comparison' ? 'text-amber-300' : 'text-emerald-700'}`} />
+                                <span>Perbandingan & Rekomendasi ({groupedProducts.length})</span>
+                              </button>
+                            )}
                             {hasQuotes && (
                               <button
                                 type="button"
@@ -476,7 +595,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                                     : 'text-slate-600 hover:text-slate-900'
                                 }`}
                               >
-                                Produk ({parseResult.parsedQuotes.length})
+                                Semua Baris ({parseResult.parsedQuotes.length})
                               </button>
                             )}
                             {hasSuppliers && (
@@ -494,14 +613,273 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                             )}
                           </div>
                           <span className="text-[10px] text-slate-500 hidden sm:inline mr-2">
-                            Pratinjau data yang akan masuk
+                            Analisis & Rekomendasi PBF
                           </span>
                         </div>
 
-                        {/* PREVIEW: PRODUCTS CARDS (Mobile First) */}
+                        {/* PREVIEW TAB 1: QUICK COMPARISON & CHEAPEST RECOMMENDATIONS */}
+                        {previewTab === 'comparison' && hasQuotes && (
+                          <div className="p-3 sm:p-4 space-y-3.5 max-h-[380px] sm:max-h-[440px] overflow-y-auto">
+                            
+                            {/* Comparison Metric Overview */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-gradient-to-br from-emerald-50 to-teal-50/70 p-3 rounded-xl border border-emerald-200/80">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white shrink-0 shadow-xs">
+                                  <Package className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-bold text-emerald-900 uppercase">Produk Dibandingkan</p>
+                                  <p className="text-sm font-black text-emerald-950">
+                                    {groupedProducts.length} Produk <span className="text-[11px] font-normal text-emerald-700">({comparisonStats.multiSupplierCount} multi-vendor)</span>
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 shadow-xs">
+                                  <TrendingDown className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-bold text-teal-900 uppercase">Potensi Penghematan</p>
+                                  <p className="text-sm font-black text-teal-950">
+                                    {formatRupiah(comparisonStats.totalSavingsPotential)}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2.5 sm:border-l sm:border-emerald-200/80 sm:pl-3">
+                                <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-white shrink-0 shadow-xs">
+                                  <Trophy className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[10px] font-bold text-amber-950 uppercase">Peringkat Supplier Termurah</p>
+                                  <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 mt-0.5">
+                                    {comparisonStats.topSuppliers.length > 0 ? (
+                                      comparisonStats.topSuppliers.slice(0, 2).map(([sName, count], sIdx) => (
+                                        <span key={sIdx} className="text-[10px] font-bold bg-white text-emerald-900 border border-emerald-300 px-1.5 py-0.5 rounded shadow-2xs whitespace-nowrap">
+                                          {sName}: <span className="text-emerald-700">{count}x</span>
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span className="text-[11px] text-slate-500">-</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Search & Quick Actions Bar */}
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                              <div className="relative flex-1">
+                                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                  type="text"
+                                  value={comparisonSearchQuery}
+                                  onChange={(e) => setComparisonSearchQuery(e.target.value)}
+                                  placeholder="Cari obat, pabrik, atau supplier..."
+                                  className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                />
+                              </div>
+
+                              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                                <button
+                                  type="button"
+                                  onClick={() => setComparisonFilter('all')}
+                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors ${
+                                    comparisonFilter === 'all'
+                                      ? 'bg-slate-800 text-white'
+                                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  Semua ({groupedProducts.length})
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setComparisonFilter('multi')}
+                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors ${
+                                    comparisonFilter === 'multi'
+                                      ? 'bg-emerald-700 text-white'
+                                      : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                                  }`}
+                                >
+                                  Multi-Vendor ({comparisonStats.multiSupplierCount})
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCopySummary}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 whitespace-nowrap transition-colors ml-auto shadow-2xs"
+                                  title="Salin ringkasan rekomendasi termurah"
+                                >
+                                  {copiedSummary ? (
+                                    <>
+                                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                      <span className="text-emerald-700">Tersalin!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                      <span>Salin Rangkuman</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Comparison Cards List */}
+                            <div className="space-y-3">
+                              {filteredGroupedProducts.length === 0 ? (
+                                <div className="text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                  <p className="text-xs text-slate-500">Tidak ada produk yang cocok dengan pencarian filter.</p>
+                                </div>
+                              ) : (
+                                filteredGroupedProducts.map((p, idx) => {
+                                  const bestQuote = p.cheapestQuote;
+                                  const sellingPrice = bestQuote ? calculateSellingPrice(bestQuote.price, settings).sellingPrice : 0;
+                                  const subPrice = bestQuote ? (bestQuote.pricePerSubUnit || Math.round(bestQuote.price / (p.subUnitCount || 10))) : 0;
+                                  const hasMultipleVendors = p.supplierCount > 1;
+
+                                  return (
+                                    <div key={idx} className="p-3 rounded-xl border border-slate-200/90 bg-white hover:border-emerald-300 hover:shadow-xs transition-all">
+                                      {/* Product Header */}
+                                      <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-100">
+                                        <div>
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
+                                              {p.productName}
+                                            </h4>
+                                            <span className="text-[10px] font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
+                                              {p.category}
+                                            </span>
+                                            {hasMultipleVendors ? (
+                                              <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">
+                                                {p.supplierCount} Penawaran Supplier
+                                              </span>
+                                            ) : (
+                                              <span className="text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded">
+                                                1 Supplier
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-1 flex-wrap">
+                                            {p.company && (
+                                              <span className="text-slate-700 font-medium">
+                                                Pabrik: {p.company}
+                                              </span>
+                                            )}
+                                            {p.packaging && (
+                                              <span>• Kemasan: {p.packaging}</span>
+                                            )}
+                                            <span>• Satuan: {p.defaultUnit}</span>
+                                          </div>
+                                        </div>
+
+                                        {hasMultipleVendors && p.priceDifference > 0 && (
+                                          <div className="text-right shrink-0 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg">
+                                            <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
+                                              Selisih Hemat
+                                            </span>
+                                            <span className="text-xs font-black text-emerald-800">
+                                              {formatRupiah(p.priceDifference)} <span className="text-[10px] font-bold">(-{p.savingsPercentage}%)</span>
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Recommendation Highlight Banner */}
+                                      {bestQuote && (
+                                        <div className="mt-2.5 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/5 p-2.5 rounded-xl border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                          <div className="flex items-start gap-2 min-w-0">
+                                            <div className="w-6 h-6 rounded-md bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                                              <Trophy className="w-3.5 h-3.5 text-amber-300" />
+                                            </div>
+                                            <div>
+                                              <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded">
+                                                  Rekomendasi Termurah
+                                                </span>
+                                                <span className="text-xs font-black text-slate-900">
+                                                  {bestQuote.supplierName}
+                                                </span>
+                                              </div>
+                                              <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-600 flex-wrap">
+                                                <span>Modal Beli: <strong className="text-emerald-700 font-black">{formatRupiah(bestQuote.price)}</strong>/{p.defaultUnit}</span>
+                                                <span>•</span>
+                                                <span>Estimasi Jual (+{settings.marginPercent}%): <strong className="text-slate-800 font-bold">{formatRupiah(sellingPrice)}</strong></span>
+                                                <span>•</span>
+                                                <span className="text-slate-500">~{formatRupiah(subPrice)}/{p.subUnitName}</span>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
+                                            {hasMultipleVendors && p.highestQuote && p.highestQuote.supplierName !== bestQuote.supplierName && (
+                                              <span className="text-[10px] text-emerald-800 bg-emerald-100/80 px-2 py-1 rounded-md font-semibold">
+                                                Lebih murah dari {p.highestQuote.supplierName} ({formatRupiah(p.highestQuote.price)})
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Full Supplier Comparison Breakdown */}
+                                      {hasMultipleVendors && (
+                                        <div className="mt-2.5 pt-2 border-t border-slate-100">
+                                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                                            Perbandingan Semua Supplier:
+                                          </p>
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                                            {p.quotes.map((q, qIdx) => {
+                                              const isBest = qIdx === 0;
+                                              const diffFromBest = q.price - (bestQuote?.price || 0);
+                                              const diffPercent = bestQuote?.price ? Math.round((diffFromBest / bestQuote.price) * 100) : 0;
+
+                                              return (
+                                                <div 
+                                                  key={qIdx} 
+                                                  className={`p-2 rounded-lg text-xs flex items-center justify-between gap-1.5 border ${
+                                                    isBest 
+                                                      ? 'bg-emerald-50/60 border-emerald-300 font-bold text-emerald-950' 
+                                                      : 'bg-slate-50 border-slate-200 text-slate-700'
+                                                  }`}
+                                                >
+                                                  <div className="min-w-0 flex items-center gap-1.5">
+                                                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] shrink-0 ${
+                                                      isBest ? 'bg-emerald-600 text-white font-bold' : 'bg-slate-200 text-slate-700'
+                                                    }`}>
+                                                      {qIdx + 1}
+                                                    </span>
+                                                    <span className="truncate font-semibold text-[11px]">{q.supplierName}</span>
+                                                  </div>
+                                                  <div className="text-right shrink-0">
+                                                    <span className={`block font-bold text-xs ${isBest ? 'text-emerald-800' : 'text-slate-800'}`}>
+                                                      {formatRupiah(q.price)}
+                                                    </span>
+                                                    {isBest ? (
+                                                      <span className="text-[9px] text-emerald-700 font-bold">👑 Termurah</span>
+                                                    ) : (
+                                                      <span className="text-[9px] text-rose-600 font-medium">
+                                                        +{formatRupiah(diffFromBest)} (+{diffPercent}%)
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* PREVIEW TAB 2: RAW PRODUCTS CARDS (Mobile First) */}
                         {previewTab === 'products' && hasQuotes && (
                           <div className="p-2.5 sm:p-3 space-y-2 max-h-56 sm:max-h-64 overflow-y-auto divide-y divide-slate-100">
-                            {parseResult.parsedQuotes.slice(0, 10).map((q, idx) => (
+                            {parseResult.parsedQuotes.slice(0, 15).map((q, idx) => (
                               <div key={idx} className="pt-2 first:pt-0">
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="min-w-0 flex-1">
@@ -540,20 +918,20 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                                 )}
                               </div>
                             ))}
-                            {parseResult.parsedQuotes.length > 10 && (
+                            {parseResult.parsedQuotes.length > 15 && (
                               <div className="pt-2 text-center">
                                 <span className="inline-block text-[11px] text-slate-500 bg-slate-100 px-3 py-1 rounded-full font-medium">
-                                  + {parseResult.parsedQuotes.length - 10} data produk lainnya siap diimpor
+                                  + {parseResult.parsedQuotes.length - 15} data produk lainnya siap diimpor
                                 </span>
                               </div>
                             )}
                           </div>
                         )}
 
-                        {/* PREVIEW: SUPPLIERS CARDS */}
+                        {/* PREVIEW TAB 3: SUPPLIERS CARDS */}
                         {previewTab === 'suppliers' && hasSuppliers && (
                           <div className="p-2.5 sm:p-3 space-y-2 max-h-56 sm:max-h-64 overflow-y-auto divide-y divide-slate-100">
-                            {parseResult.parsedSuppliers.slice(0, 10).map((s, idx) => (
+                            {parseResult.parsedSuppliers.slice(0, 15).map((s, idx) => (
                               <div key={idx} className="pt-2 first:pt-0 flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-1.5">

@@ -36,6 +36,24 @@ export interface ParsedSupplierImportItem {
   notes?: string;
 }
 
+export interface ImportedProductComparison {
+  productName: string;
+  genericName?: string;
+  company?: string;
+  packaging?: string;
+  packContent?: string;
+  category: string;
+  defaultUnit: string;
+  subUnitCount: number;
+  subUnitName: string;
+  quotes: ParsedProductImportItem[];
+  cheapestQuote: ParsedProductImportItem | null;
+  highestQuote: ParsedProductImportItem | null;
+  priceDifference: number;
+  savingsPercentage: number;
+  supplierCount: number;
+}
+
 export interface ExcelParseResult {
   parsedQuotes: ParsedProductImportItem[];
   parsedSuppliers: ParsedSupplierImportItem[];
@@ -43,6 +61,79 @@ export interface ExcelParseResult {
   warnings: string[];
   sheetNames: string[];
   totalRows: number;
+}
+
+/**
+ * Groups raw imported quotes by product to show instant price comparisons
+ * and identify the recommended lowest price supplier for each product.
+ */
+export function groupImportedQuotesByProduct(quotes: ParsedProductImportItem[]): ImportedProductComparison[] {
+  const map = new Map<string, ImportedProductComparison>();
+
+  for (const q of quotes) {
+    if (!q.name || !q.name.trim()) continue;
+    const key = q.name.trim().toLowerCase();
+    
+    if (!map.has(key)) {
+      map.set(key, {
+        productName: q.name.trim(),
+        genericName: q.genericName,
+        company: q.company,
+        packaging: q.packaging,
+        packContent: q.packContent,
+        category: q.category || 'Umum',
+        defaultUnit: q.defaultUnit || 'Box',
+        subUnitCount: q.subUnitCount || 10,
+        subUnitName: q.subUnitName || 'lembar',
+        quotes: [],
+        cheapestQuote: null,
+        highestQuote: null,
+        priceDifference: 0,
+        savingsPercentage: 0,
+        supplierCount: 0,
+      });
+    }
+
+    const item = map.get(key)!;
+    if (q.company && !item.company) item.company = q.company;
+    if (q.packaging && !item.packaging) item.packaging = q.packaging;
+    if (q.packContent && !item.packContent) item.packContent = q.packContent;
+    if (q.category && item.category === 'Umum') item.category = q.category;
+    if (q.defaultUnit && item.defaultUnit === 'Box') item.defaultUnit = q.defaultUnit;
+    if (q.subUnitCount && item.subUnitCount === 10) item.subUnitCount = q.subUnitCount;
+    if (q.subUnitName && item.subUnitName === 'lembar') item.subUnitName = q.subUnitName;
+
+    if (q.supplierName && q.price > 0) {
+      item.quotes.push(q);
+    }
+  }
+
+  const result: ImportedProductComparison[] = [];
+  map.forEach((item) => {
+    // Sort quotes ascending by price: index 0 is cheapest!
+    item.quotes.sort((a, b) => a.price - b.price);
+    item.supplierCount = item.quotes.length;
+
+    if (item.quotes.length > 0) {
+      item.cheapestQuote = item.quotes[0];
+      item.highestQuote = item.quotes[item.quotes.length - 1];
+      item.priceDifference = Math.max(0, item.highestQuote.price - item.cheapestQuote.price);
+      item.savingsPercentage =
+        item.highestQuote.price > 0
+          ? Math.round(((item.highestQuote.price - item.cheapestQuote.price) / item.highestQuote.price) * 100)
+          : 0;
+    }
+
+    result.push(item);
+  });
+
+  // Sort products: ones with highest savings or most quotes first
+  return result.sort((a, b) => {
+    if (b.priceDifference !== a.priceDifference) {
+      return b.priceDifference - a.priceDifference;
+    }
+    return b.supplierCount - a.supplierCount;
+  });
 }
 
 /**
@@ -467,6 +558,7 @@ export function downloadSupplierOnlyTemplate(): void {
 export function getSampleExcelData(): ExcelParseResult {
   return {
     parsedQuotes: [
+      // Paracetamol 500mg - 3 Suppliers
       {
         name: 'Paracetamol 500mg',
         company: 'PT Kimia Farma Tbk',
@@ -510,6 +602,29 @@ export function getSampleExcelData(): ExcelParseResult {
         notes: 'Bisa beli eceran 1 box',
       },
       {
+        name: 'Paracetamol 500mg',
+        company: 'PT Kimia Farma Tbk',
+        packaging: 'Tablet 10 x 10',
+        packContent: '1 Box = 10 Lembar',
+        subUnitCount: 10,
+        subUnitName: 'lembar',
+        category: 'Analgesik & Antipiretik',
+        defaultUnit: 'Box',
+        sku: 'PCT-500-BX',
+        supplierName: 'PT Sehat Sentosa Farmasi',
+        hna: 11000,
+        discountPercent: 1.82,
+        price: 10800,
+        pricePerSubUnit: 1080,
+        priceWithPpn: 11988,
+        moq: 2,
+        leadTimeDays: 2,
+        inStock: true,
+        notes: 'Diskon standar',
+      },
+
+      // Amoxicillin 500mg - 3 Suppliers
+      {
         name: 'Amoxicillin 500mg',
         company: 'PT Sanbe Farma',
         packaging: 'Kaplet 10 x 10',
@@ -528,7 +643,93 @@ export function getSampleExcelData(): ExcelParseResult {
         moq: 2,
         leadTimeDays: 1,
         inStock: true,
-        notes: 'Syarat SP Obat Keras',
+        notes: 'Harga terbaik, syarat SP Obat Keras',
+      },
+      {
+        name: 'Amoxicillin 500mg',
+        company: 'PT Sanbe Farma',
+        packaging: 'Kaplet 10 x 10',
+        packContent: '1 Box = 10 Lembar',
+        subUnitCount: 10,
+        subUnitName: 'lembar',
+        category: 'Antibiotik',
+        defaultUnit: 'Box',
+        sku: 'AMX-500-BX',
+        supplierName: 'PT Aman Farma',
+        hna: 40000,
+        discountPercent: 11.25,
+        price: 35500,
+        pricePerSubUnit: 3550,
+        priceWithPpn: 39405,
+        moq: 1,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Bebas ongkir Jabodetabek',
+      },
+      {
+        name: 'Amoxicillin 500mg',
+        company: 'PT Sanbe Farma',
+        packaging: 'Kaplet 10 x 10',
+        packContent: '1 Box = 10 Lembar',
+        subUnitCount: 10,
+        subUnitName: 'lembar',
+        category: 'Antibiotik',
+        defaultUnit: 'Box',
+        sku: 'AMX-500-BX',
+        supplierName: 'PT Kinariya',
+        hna: 40000,
+        discountPercent: 7.5,
+        price: 37000,
+        pricePerSubUnit: 3700,
+        priceWithPpn: 41070,
+        moq: 5,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Stok terbatas',
+      },
+
+      // Omeprazole 20mg - 3 Suppliers
+      {
+        name: 'Omeprazole 20mg',
+        company: 'PT Dexa Medica',
+        packaging: 'Kapsul 3 x 10',
+        packContent: '1 Box = 3 Lembar',
+        subUnitCount: 3,
+        subUnitName: 'lembar',
+        category: 'Saluran Cerna',
+        defaultUnit: 'Box',
+        sku: 'OMZ-20-BX',
+        supplierName: 'PT Aman Farma',
+        hna: 22500,
+        discountPercent: 20.0,
+        price: 18000,
+        pricePerSubUnit: 6000,
+        priceWithPpn: 19980,
+        moq: 2,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Promo distributor resmi Dexa',
+      },
+      {
+        name: 'Omeprazole 20mg',
+        company: 'PT Dexa Medica',
+        packaging: 'Kapsul 3 x 10',
+        packContent: '1 Box = 3 Lembar',
+        subUnitCount: 3,
+        subUnitName: 'lembar',
+        category: 'Saluran Cerna',
+        defaultUnit: 'Box',
+        sku: 'OMZ-20-BX',
+        supplierName: 'PT Medika Jaya Abadi',
+        hna: 22500,
+        discountPercent: 13.33,
+        price: 19500,
+        pricePerSubUnit: 6500,
+        priceWithPpn: 21645,
+        moq: 1,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Ready stock tempo 30 hari',
       },
       {
         name: 'Omeprazole 20mg',
@@ -551,6 +752,73 @@ export function getSampleExcelData(): ExcelParseResult {
         inStock: true,
         notes: 'Fast-moving digest product',
       },
+
+      // Masker Medis 3-Ply - 3 Suppliers
+      {
+        name: 'Masker Medis 3-Ply Earloop',
+        company: 'PT OneMed Healthcare',
+        packaging: 'Box 50 Pcs',
+        packContent: '1 Box = 50 Pcs',
+        subUnitCount: 50,
+        subUnitName: 'pcs',
+        category: 'Alat Kesehatan & Medis',
+        defaultUnit: 'Box',
+        sku: 'MSK-3PLY-50',
+        supplierName: 'CV Prima Alkesindo',
+        hna: 20000,
+        discountPercent: 17.5,
+        price: 16500,
+        pricePerSubUnit: 330,
+        priceWithPpn: 18315,
+        moq: 10,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Spesialis alkes distributor resmi OneMed',
+      },
+      {
+        name: 'Masker Medis 3-Ply Earloop',
+        company: 'PT OneMed Healthcare',
+        packaging: 'Box 50 Pcs',
+        packContent: '1 Box = 50 Pcs',
+        subUnitCount: 50,
+        subUnitName: 'pcs',
+        category: 'Alat Kesehatan & Medis',
+        defaultUnit: 'Box',
+        sku: 'MSK-3PLY-50',
+        supplierName: 'PT Kinariya',
+        hna: 20000,
+        discountPercent: 10.0,
+        price: 18000,
+        pricePerSubUnit: 360,
+        priceWithPpn: 19980,
+        moq: 5,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Bisa campur alkes lain',
+      },
+      {
+        name: 'Masker Medis 3-Ply Earloop',
+        company: 'PT OneMed Healthcare',
+        packaging: 'Box 50 Pcs',
+        packContent: '1 Box = 50 Pcs',
+        subUnitCount: 50,
+        subUnitName: 'pcs',
+        category: 'Alat Kesehatan & Medis',
+        defaultUnit: 'Box',
+        sku: 'MSK-3PLY-50',
+        supplierName: 'PT Aman Farma',
+        hna: 20000,
+        discountPercent: 2.5,
+        price: 19500,
+        pricePerSubUnit: 390,
+        priceWithPpn: 21645,
+        moq: 1,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Bisa beli eceran',
+      },
+
+      // Vitamin C 500mg - 3 Suppliers
       {
         name: 'Vitamin C 500mg',
         company: 'PT Kalbe Farma',
@@ -570,7 +838,93 @@ export function getSampleExcelData(): ExcelParseResult {
         moq: 1,
         leadTimeDays: 2,
         inStock: true,
-        notes: 'Suplemen daya tahan tubuh',
+        notes: 'Harga terbaik distributor Kalbe',
+      },
+      {
+        name: 'Vitamin C 500mg',
+        company: 'PT Kalbe Farma',
+        packaging: 'Botol 100 Tablet',
+        packContent: '1 Botol = 100 Tab',
+        subUnitCount: 100,
+        subUnitName: 'tablet',
+        category: 'Vitamin & Suplemen',
+        defaultUnit: 'Botol',
+        sku: 'VTC-500-BT',
+        supplierName: 'PT Aman Farma',
+        hna: 55000,
+        discountPercent: 5.45,
+        price: 52000,
+        pricePerSubUnit: 520,
+        priceWithPpn: 57720,
+        moq: 1,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Ready stock pengiriman cepat',
+      },
+      {
+        name: 'Vitamin C 500mg',
+        company: 'PT Kalbe Farma',
+        packaging: 'Botol 100 Tablet',
+        packContent: '1 Botol = 100 Tab',
+        subUnitCount: 100,
+        subUnitName: 'tablet',
+        category: 'Vitamin & Suplemen',
+        defaultUnit: 'Botol',
+        sku: 'VTC-500-BT',
+        supplierName: 'PT Medika Jaya Abadi',
+        hna: 55000,
+        discountPercent: 1.82,
+        price: 54000,
+        pricePerSubUnit: 540,
+        priceWithPpn: 59940,
+        moq: 2,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Stok melimpah',
+      },
+
+      // Cetirizine 10mg - 2 Suppliers
+      {
+        name: 'Cetirizine 10mg',
+        company: 'PT Kimia Farma Tbk',
+        packaging: 'Tablet 10 x 10',
+        packContent: '1 Box = 10 Lembar',
+        subUnitCount: 10,
+        subUnitName: 'lembar',
+        category: 'Antihistamin & Alergi',
+        defaultUnit: 'Box',
+        sku: 'CTZ-10-BX',
+        supplierName: 'PT Kinariya',
+        hna: 17000,
+        discountPercent: 14.7,
+        price: 14500,
+        pricePerSubUnit: 1450,
+        priceWithPpn: 16095,
+        moq: 3,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Antihistamin non-sedatif',
+      },
+      {
+        name: 'Cetirizine 10mg',
+        company: 'PT Kimia Farma Tbk',
+        packaging: 'Tablet 10 x 10',
+        packContent: '1 Box = 10 Lembar',
+        subUnitCount: 10,
+        subUnitName: 'lembar',
+        category: 'Antihistamin & Alergi',
+        defaultUnit: 'Box',
+        sku: 'CTZ-10-BX',
+        supplierName: 'PT Aman Farma',
+        hna: 17000,
+        discountPercent: 5.88,
+        price: 16000,
+        pricePerSubUnit: 1600,
+        priceWithPpn: 17760,
+        moq: 1,
+        leadTimeDays: 1,
+        inStock: true,
+        notes: 'Bisa beli eceran',
       }
     ],
     parsedSuppliers: [
@@ -613,12 +967,22 @@ export function getSampleExcelData(): ExcelParseResult {
         paymentTerms: 'Tempo 45 Hari',
         rating: 4.5,
         notes: 'Spesialis vitamin dan injeksi',
+      },
+      {
+        name: 'CV Prima Alkesindo',
+        contactPerson: 'Bpk. Bagus Santoso',
+        phone: '0819-3344-5566',
+        email: 'sales@primaalkes.id',
+        address: 'Jl. Bypass Ngurah Rai No. 45, Denpasar',
+        paymentTerms: 'Tempo 21 Hari',
+        rating: 4.8,
+        notes: 'Distributor alat kesehatan dan masker medis',
       }
     ],
     errors: [],
     warnings: [],
     sheetNames: ['Produk & Penawaran', 'Master Supplier'],
-    totalRows: 5,
+    totalRows: 17,
   };
 }
 
@@ -999,6 +1363,73 @@ export async function parseExcelUpload(file: File): Promise<ExcelParseResult> {
           return;
         }
 
+        // Check for Wide-Matrix Supplier Columns if no single supplier column was populated
+        if (productName && !supplierName) {
+          const STANDARD_METADATA_KEYS = new Set([
+            'namaproduk', 'produk', 'namaobat', 'barang', 'product', 'item',
+            'generik', 'zataktif', 'generic',
+            'company', 'pabrik', 'produsen', 'manufaktur', 'perusahaan',
+            'kemasan', 'packaging', 'packing',
+            'isikemasan', 'packcontent', 'isi',
+            'jumlahisi', 'subunitcount', 'pecahan', 'isibox',
+            'satuanpecahan', 'satuanisi', 'subunitname',
+            'kategori', 'category', 'jenis',
+            'satuandasar', 'satuan', 'unit',
+            'sku', 'kode', 'code',
+            'deskripsi', 'description', 'keteranganproduk',
+            'namasupplier', 'supplier', 'vendor', 'distributor', 'pbf',
+            'hna', 'harganetto', 'diskon', 'disk', 'discount',
+            'hargajadibox', 'hargabox', 'harga', 'price', 'tarif', 'biaya',
+            'hargajadilembar', 'hargalembar', 'hargastrip',
+            'hargappn', 'plusppn', 'hargajadippn',
+            'moq', 'minorder', 'minimal',
+            'leadtime', 'hari', 'estimasi', 'pengiriman',
+            'stok', 'stock', 'status',
+            'catatan', 'notes', 'keterangan', 'keteranganpenawaran',
+            'no', 'nomor', 'id'
+          ]);
+
+          let foundWideQuotes = false;
+          Object.entries(row).forEach(([colKey, colVal]) => {
+            const norm = normalizeHeaderKey(colKey);
+            if (!STANDARD_METADATA_KEYS.has(norm) && norm.length >= 2) {
+              const widePrice = parsePriceNumber(colVal);
+              if (widePrice > 0) {
+                foundWideQuotes = true;
+                const safeSupplierName = colKey.trim().replace(/^harga\s+/i, '');
+                const widePerSub = Math.round(widePrice / safeCount);
+                const widePpn = Math.round(widePrice * 1.11);
+
+                parsedQuotes.push({
+                  name: productName,
+                  genericName: genericName || undefined,
+                  company: company || undefined,
+                  packaging: packaging || undefined,
+                  packContent: packContent || undefined,
+                  subUnitCount: safeCount,
+                  subUnitName: subUnitName || 'lembar',
+                  category,
+                  defaultUnit: unit,
+                  sku: sku || undefined,
+                  description: description || undefined,
+                  supplierName: safeSupplierName,
+                  price: widePrice,
+                  pricePerSubUnit: widePerSub,
+                  priceWithPpn: widePpn,
+                  moq: 1,
+                  leadTimeDays: 1,
+                  inStock: true,
+                  notes: quoteNotes || undefined,
+                });
+              }
+            }
+          });
+
+          if (foundWideQuotes) {
+            return; // Finished parsing wide row
+          }
+        }
+
         if (productName && supplierName) {
           parsedQuotes.push({
             name: productName,
@@ -1068,4 +1499,69 @@ export async function parseExcelUpload(file: File): Promise<ExcelParseResult> {
     sheetNames: workbook.SheetNames,
     totalRows,
   };
+}
+
+/**
+ * Exports comparison and recommendation results to an Excel spreadsheet (.xlsx)
+ */
+export function exportComparisonReportToExcel(
+  comparisons: ImportedProductComparison[],
+  marginPercent: number = 25
+): void {
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: Rekomendasi Termurah & Komparasi
+  const summaryRows = comparisons.map((item, idx) => {
+    const best = item.cheapestQuote;
+    const highest = item.highestQuote;
+    const bestPrice = best ? best.price : 0;
+    const sellingPrice = bestPrice ? Math.round(bestPrice * (1 + marginPercent / 100)) : 0;
+    const otherQuotes = item.quotes
+      .map(q => `${q.supplierName}: Rp ${q.price.toLocaleString('id-ID')}`)
+      .join(' | ');
+
+    return {
+      'No': idx + 1,
+      'Nama Produk': item.productName,
+      'Pabrik / Produsen': item.company || '-',
+      'Kemasan': item.packaging || '-',
+      'Isi Kemasan': item.packContent || '-',
+      'Kategori': item.category,
+      'Satuan': item.defaultUnit,
+      'Jumlah Supplier': item.supplierCount,
+      'Supplier Termurah (Rekomendasi)': best ? best.supplierName : '-',
+      'Harga Beli Termurah (Rp)': bestPrice,
+      'Rekomendasi Jual (+Margin%)': sellingPrice,
+      'Supplier Termahal': highest && item.supplierCount > 1 ? highest.supplierName : '-',
+      'Harga Tertinggi (Rp)': highest && item.supplierCount > 1 ? highest.price : bestPrice,
+      'Potensi Hemat (Rp)': item.priceDifference,
+      'Hemat (%)': item.savingsPercentage ? `${item.savingsPercentage}%` : '0%',
+      'Rincian Semua Penawaran': otherQuotes,
+    };
+  });
+
+  const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+  wsSummary['!cols'] = [
+    { wch: 5 },  // No
+    { wch: 30 }, // Nama Produk
+    { wch: 22 }, // Pabrik
+    { wch: 18 }, // Kemasan
+    { wch: 20 }, // Isi Kemasan
+    { wch: 20 }, // Kategori
+    { wch: 10 }, // Satuan
+    { wch: 15 }, // Jumlah Supplier
+    { wch: 26 }, // Supplier Termurah
+    { wch: 22 }, // Harga Beli Termurah
+    { wch: 22 }, // Rekomendasi Jual
+    { wch: 22 }, // Supplier Termahal
+    { wch: 20 }, // Harga Tertinggi
+    { wch: 18 }, // Potensi Hemat
+    { wch: 12 }, // Hemat %
+    { wch: 45 }, // Rincian Penawaran
+  ];
+
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'Rekomendasi Supplier');
+
+  const now = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `Laporan_Rekomendasi_Supplier_${now}.xlsx`);
 }

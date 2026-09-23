@@ -9,14 +9,16 @@ import {
   Layers,
   LayoutList,
   Table2,
-  ChevronRight
+  ChevronRight,
+  TrendingUp
 } from 'lucide-react';
-import { Product, Supplier } from '../types';
-import { formatRupiah, getProductPriceStats } from '../utils/formatters';
+import { Product, Supplier, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
+import { formatRupiah, getProductPriceStats, calculateSellingPrice } from '../utils/formatters';
 
 interface MatrixViewProps {
   products: Product[];
   suppliers: Supplier[];
+  settings?: AppSettings;
   onAddQuote: (product: Product) => void;
   onOpenAddProduct: () => void;
 }
@@ -24,12 +26,14 @@ interface MatrixViewProps {
 export const MatrixView: React.FC<MatrixViewProps> = ({
   products,
   suppliers,
+  settings = DEFAULT_APP_SETTINGS,
   onAddQuote,
   onOpenAddProduct,
 }) => {
   const [filterMultiSupplierOnly, setFilterMultiSupplierOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'savings' | 'name'>('savings');
   const [mobileViewStyle, setMobileViewStyle] = useState<'card' | 'table'>('card');
+  const [showSellingPrice, setShowSellingPrice] = useState(true);
 
   // Filter and sort products
   let displayProducts = products.filter((p) => {
@@ -66,6 +70,20 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Toggle Show Selling Price */}
+            <button
+              onClick={() => setShowSellingPrice(!showSellingPrice)}
+              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                showSellingPrice
+                  ? 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold shadow-2xs'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+              title="Tampilkan kolom/baris harga yang sudah di-plus margin"
+            >
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+              <span>+Margin ({settings.marginPercent}%)</span>
+            </button>
+
             {/* Mobile View Style Switcher */}
             <div className="sm:hidden flex items-center bg-slate-200 p-0.5 rounded-lg text-xs font-semibold">
               <button
@@ -217,11 +235,17 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                         </div>
 
                         <div className="text-right shrink-0">
+                          <span className="text-[10px] text-slate-400 block font-semibold">MODAL</span>
                           <span className={`font-extrabold text-sm ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
                             {formatRupiah(quote.price)}
                           </span>
+                          {showSellingPrice && (
+                            <span className="block text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1 rounded mt-0.5">
+                              Jual: {formatRupiah(calculateSellingPrice(quote.price, settings).sellingPrice)}
+                            </span>
+                          )}
                           {!isCheapest && diff > 0 && (
-                            <span className="block text-[10px] font-semibold text-rose-600">
+                            <span className="block text-[10px] font-semibold text-rose-600 mt-0.5">
                               +{formatRupiah(diff)}
                             </span>
                           )}
@@ -349,6 +373,12 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                               {formatRupiah(quote.price)}
                             </span>
 
+                            {showSellingPrice && (
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/60 px-1 rounded mt-0.5" title="Harga Jual Rekomendasi">
+                                Jual: {formatRupiah(calculateSellingPrice(quote.price, settings).sellingPrice)}
+                              </span>
+                            )}
+
                             <span className="text-[10px] text-slate-500 mt-0.5">
                               ~{formatRupiah(quote.pricePerSubUnit || Math.round(quote.price / (product.subUnitCount || 10)))}/{product.subUnitName || 'lbr'}
                             </span>
@@ -374,10 +404,16 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                     <td className="p-3 sm:p-4 text-right border-l border-slate-200 bg-emerald-50/30">
                       {stats.cheapestQuote ? (
                         <div>
+                          <span className="text-[10px] text-slate-400 block font-semibold">MODAL</span>
                           <span className="font-extrabold text-xs sm:text-sm text-emerald-700">
                             {formatRupiah(stats.minPrice)}
                           </span>
-                          <span className="block text-[11px] text-slate-600 truncate max-w-[120px] ml-auto font-medium">
+                          {showSellingPrice && (
+                            <span className="block text-[10px] font-bold text-emerald-800 mt-0.5">
+                              Jual: {formatRupiah(calculateSellingPrice(stats.minPrice, settings).sellingPrice)}
+                            </span>
+                          )}
+                          <span className="block text-[11px] text-slate-600 truncate max-w-[120px] ml-auto font-medium mt-0.5">
                             {stats.cheapestQuote.supplierName}
                           </span>
                         </div>

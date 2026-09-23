@@ -48,7 +48,7 @@ export interface PurchaseSimulationItem {
   quantity: number;
 }
 
-export type ViewMode = 'cards' | 'matrix' | 'simulation' | 'suppliers';
+export type ViewMode = 'cards' | 'matrix' | 'simulation' | 'suppliers' | 'excel-compare';
 
 export type SortOption = 
   | 'savings-desc' 
@@ -56,3 +56,20 @@ export type SortOption =
   | 'price-desc' 
   | 'name-asc' 
   | 'quotes-count';
+
+export interface AppSettings {
+  ppnPercent: number; // Persentase PPN (misal: 11 atau 12 atau 0)
+  ppnEnabled: boolean; // Aktifkan kalkulasi PPN
+  marginPercent: number; // Persentase Margin Keuntungan (misal: 25%)
+  marginCalculationMode: 'on_cost_plus_ppn' | 'markup'; // Cara hitung: modal + PPN + margin atau modal + margin
+  roundingOption: 'none' | 'hundred' | 'thousand'; // Pembulatan kasir
+}
+
+export const DEFAULT_APP_SETTINGS: AppSettings = {
+  ppnPercent: 11,
+  ppnEnabled: true,
+  marginPercent: 25,
+  marginCalculationMode: 'on_cost_plus_ppn',
+  roundingOption: 'none',
+};
+

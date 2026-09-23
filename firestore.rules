@@ -10,5 +10,10 @@ service cloud.firestore {
     match /suppliers/{supplierId} {
       allow read, write: if true;
     }
+
+    // Allow read and write to settings collection for app configuration (PPN, margin)
+    match /settings/{settingId} {
+      allow read, write: if true;
+    }
   }
 }

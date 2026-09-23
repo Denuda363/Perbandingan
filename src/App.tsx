@@ -13,9 +13,12 @@ import {
   LayoutGrid,
   Table2,
   Calculator,
-  Users
+  Users,
+  Trophy,
+  X,
+  FileSpreadsheet
 } from 'lucide-react';
-import { Product, Supplier, SupplierQuote, ViewMode, SortOption } from './types';
+import { Product, Supplier, SupplierQuote, ViewMode, SortOption, AppSettings, DEFAULT_APP_SETTINGS } from './types';
 import { INITIAL_PRODUCTS, INITIAL_SUPPLIERS } from './data/initialData';
 import { exportProductsToCSV, getProductPriceStats } from './utils/formatters';
 import { downloadCompleteExcelTemplate, exportAppToExcel, ExcelParseResult } from './utils/excelUtils';
@@ -25,6 +28,7 @@ import { ProductCard } from './components/ProductCard';
 import { MatrixView } from './components/MatrixView';
 import { SimulationCalculator } from './components/SimulationCalculator';
 import { SupplierDirectory } from './components/SupplierDirectory';
+import { ExcelCompareView } from './components/ExcelCompareView';
 import { ProductModal } from './components/ProductModal';
 import { AddQuoteModal } from './components/AddQuoteModal';
 import { SupplierModal } from './components/SupplierModal';
@@ -32,9 +36,12 @@ import { ExcelImportModal } from './components/ExcelImportModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { SettingsModal } from './components/SettingsModal';
 import {
   subscribeToProducts,
   subscribeToSuppliers,
+  subscribeToSettings,
+  saveSettingsToFirestore,
   saveProductToFirestore,
   deleteProductFromFirestore,
   saveSupplierToFirestore,
@@ -45,9 +52,22 @@ import {
 
 const STORAGE_KEY_PRODUCTS = 'harga_vendor_products_v1';
 const STORAGE_KEY_SUPPLIERS = 'harga_vendor_suppliers_v1';
+const STORAGE_KEY_SETTINGS = 'harga_vendor_settings_v1';
 
 export default function App() {
   const [syncStatus, setSyncStatus] = useState<'connected' | 'syncing' | 'offline' | 'error'>('syncing');
+
+  // State: Settings
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_SETTINGS);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load settings from storage', e);
+    }
+    return DEFAULT_APP_SETTINGS;
+  });
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   // State: Products and Suppliers loaded from localStorage or initialized
   const [products, setProducts] = useState<Product[]>(() => {
@@ -89,6 +109,11 @@ export default function App() {
   const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importBannerInfo, setImportBannerInfo] = useState<{
+    productsCount: number;
+    quotesCount: number;
+    suppliersCount: number;
+  } | null>(null);
   const [isPWAInstallModalOpen, setIsPWAInstallModalOpen] = useState(false);
 
   // Toast message
@@ -105,6 +130,7 @@ export default function App() {
   useEffect(() => {
     let unsubProducts = () => {};
     let unsubSuppliers = () => {};
+    let unsubSettings = () => {};
 
     async function initFirebaseSync() {
       try {
@@ -139,6 +165,19 @@ export default function App() {
             setSyncStatus(navigator.onLine ? 'error' : 'offline');
           }
         );
+
+        // Realtime listener for app settings (PPN & Margin)
+        unsubSettings = subscribeToSettings(
+          (remoteSettings) => {
+            if (remoteSettings) {
+              setSettings(remoteSettings);
+              localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(remoteSettings));
+            }
+          },
+          (err) => {
+            console.error('Realtime settings listener error:', err);
+          }
+        );
       } catch (e) {
         console.error('Firebase sync init failed:', e);
         setSyncStatus(navigator.onLine ? 'error' : 'offline');
@@ -150,8 +189,23 @@ export default function App() {
     return () => {
       unsubProducts();
       unsubSuppliers();
+      unsubSettings();
     };
   }, []);
+
+  const handleSaveSettings = async (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    try {
+      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(newSettings));
+      await saveSettingsToFirestore(newSettings);
+      showToast(
+        `Pengaturan disimpan: PPN ${newSettings.ppnEnabled ? `${newSettings.ppnPercent}%` : 'Non-PPN'}, Margin ${newSettings.marginPercent}%`
+      );
+    } catch (e) {
+      console.error('Failed to sync settings to Firestore:', e);
+      showToast('Pengaturan disimpan di perangkat.');
+    }
+  };
 
   // Persist to localStorage as offline fallback
   useEffect(() => {
@@ -562,12 +616,17 @@ export default function App() {
             (q) => q.supplierName.trim().toLowerCase() === qImport.supplierName.trim().toLowerCase()
           );
 
+          const safeSubCount = qImport.subUnitCount || existingProd.subUnitCount || 10;
           const quoteObj: SupplierQuote = {
             id: qIdx >= 0 ? quotes[qIdx].id : `q-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
             supplierId: supplierId || (qIdx >= 0 ? quotes[qIdx].supplierId : ''),
             supplierName: qImport.supplierName.trim(),
             price: qImport.price,
             unit: qImport.defaultUnit || existingProd.defaultUnit,
+            hna: qImport.hna || (qIdx >= 0 ? quotes[qIdx].hna : qImport.price),
+            discountPercent: qImport.discountPercent || (qIdx >= 0 ? quotes[qIdx].discountPercent : 0),
+            pricePerSubUnit: qImport.pricePerSubUnit || (qIdx >= 0 ? quotes[qIdx].pricePerSubUnit : Math.round(qImport.price / safeSubCount)),
+            priceWithPpn: qImport.priceWithPpn || (qIdx >= 0 ? quotes[qIdx].priceWithPpn : Math.round(qImport.price * 1.11)),
             moq: qImport.moq || (qIdx >= 0 ? quotes[qIdx].moq : 1),
             leadTimeDays: qImport.leadTimeDays !== undefined ? qImport.leadTimeDays : (qIdx >= 0 ? quotes[qIdx].leadTimeDays : 1),
             lastUpdated: todayStr,
@@ -585,6 +644,11 @@ export default function App() {
 
         nextProducts[pIdx] = {
           ...existingProd,
+          company: qImport.company || existingProd.company,
+          packaging: qImport.packaging || existingProd.packaging,
+          packContent: qImport.packContent || existingProd.packContent,
+          subUnitCount: qImport.subUnitCount || existingProd.subUnitCount,
+          subUnitName: qImport.subUnitName || existingProd.subUnitName,
           category: qImport.category && qImport.category !== 'Umum' ? qImport.category : existingProd.category,
           defaultUnit: qImport.defaultUnit || existingProd.defaultUnit,
           sku: qImport.sku || existingProd.sku,
@@ -597,6 +661,7 @@ export default function App() {
         const newProdId = `prod-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         const initialQuotes: SupplierQuote[] = [];
 
+        const safeSubCount = qImport.subUnitCount || 10;
         if (qImport.supplierName && qImport.price > 0) {
           initialQuotes.push({
             id: `q-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -604,6 +669,10 @@ export default function App() {
             supplierName: qImport.supplierName.trim(),
             price: qImport.price,
             unit: qImport.defaultUnit || 'Box',
+            hna: qImport.hna || qImport.price,
+            discountPercent: qImport.discountPercent || 0,
+            pricePerSubUnit: qImport.pricePerSubUnit || Math.round(qImport.price / safeSubCount),
+            priceWithPpn: qImport.priceWithPpn || Math.round(qImport.price * 1.11),
             moq: qImport.moq || 1,
             leadTimeDays: qImport.leadTimeDays !== undefined ? qImport.leadTimeDays : 1,
             lastUpdated: todayStr,
@@ -616,6 +685,12 @@ export default function App() {
         const newProd: Product = {
           id: newProdId,
           name: qImport.name.trim(),
+          genericName: qImport.genericName,
+          company: qImport.company,
+          packaging: qImport.packaging,
+          packContent: qImport.packContent,
+          subUnitCount: safeSubCount,
+          subUnitName: qImport.subUnitName || 'lembar',
           category: qImport.category || 'Umum',
           defaultUnit: qImport.defaultUnit || 'Box',
           sku: qImport.sku,
@@ -634,6 +709,12 @@ export default function App() {
       console.error('Failed to batch save imported Excel data to Firestore:', err)
     );
 
+    setImportBannerInfo({
+      productsCount: productsAdded + productsUpdated,
+      quotesCount,
+      suppliersCount: suppliersAdded + suppliersUpdated,
+    });
+
     const summaryParts: string[] = [];
     if (productsAdded > 0) summaryParts.push(`${productsAdded} produk baru`);
     if (productsUpdated > 0) summaryParts.push(`${productsUpdated} produk diperbarui`);
@@ -642,7 +723,7 @@ export default function App() {
 
     showToast(
       summaryParts.length > 0
-        ? `Impor Excel berhasil: ${summaryParts.join(', ')}`
+        ? `Impor & Komparasi Excel berhasil: ${summaryParts.join(', ')}`
         : 'Data Excel berhasil diproses'
     );
   };
@@ -675,11 +756,65 @@ export default function App() {
         productCount={products.length}
         onOpenInstallModal={() => setIsPWAInstallModalOpen(true)}
         syncStatus={syncStatus}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
+        settings={settings}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-28 sm:pb-10">
         
+        {/* Post-Import Result Notification Banner */}
+        {importBannerInfo && (
+          <div className="mb-4 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/5 border border-emerald-500/30 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                <Trophy className="w-4 h-4 text-amber-300" />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                  <span>Hasil Import & Komparasi Excel Siap!</span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded">
+                    {importBannerInfo.productsCount} Produk
+                  </span>
+                  <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded">
+                    {importBannerInfo.quotesCount} Penawaran Supplier
+                  </span>
+                </h4>
+                <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                  Semua penawaran supplier telah digabungkan. Peringkat rekomendasi supplier termurah dan margin jual (+{settings.marginPercent}%) telah otomatis dihitung.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentView('matrix');
+                  setImportBannerInfo(null);
+                }}
+                className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-2xs"
+              >
+                Buka Matriks Harga
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(true)}
+                className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-2xs"
+              >
+                Buka Ulang Komparasi
+              </button>
+              <button
+                type="button"
+                onClick={() => setImportBannerInfo(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-white/60 transition-colors"
+                title="Tutup pemberitahuan"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* KPI / Summary Statistics */}
         <SummaryStats products={products} suppliers={suppliers} />
 
@@ -770,6 +905,7 @@ export default function App() {
                   <ProductCard
                     key={product.id}
                     product={product}
+                    settings={settings}
                     onAddQuote={(p) => {
                       setQuoteSelectedProduct(p);
                       setQuoteToEdit(null);
@@ -802,6 +938,7 @@ export default function App() {
           <MatrixView
             products={products}
             suppliers={suppliers}
+            settings={settings}
             onAddQuote={(p) => {
               setQuoteSelectedProduct(p);
               setQuoteToEdit(null);
@@ -819,6 +956,7 @@ export default function App() {
           <SimulationCalculator
             products={products}
             suppliers={suppliers}
+            settings={settings}
           />
         )}
 
@@ -841,6 +979,15 @@ export default function App() {
           />
         )}
 
+        {/* View Mode 5: Excel Compare & Instant Supplier Recommendation */}
+        {currentView === 'excel-compare' && (
+          <ExcelCompareView
+            settings={settings}
+            onConfirmImport={handleConfirmImport}
+            onNavigateToMatrix={() => setCurrentView('matrix')}
+          />
+        )}
+
         {/* Bottom Utility Bar: Demo Data Reset info */}
         <div className="mt-10 mb-6 pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
           <p>
@@ -859,10 +1006,10 @@ export default function App() {
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 pt-2 pb-safe flex items-center justify-around shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 pt-1.5 pb-safe flex items-center justify-between shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
         <button
           onClick={() => setCurrentView('cards')}
-          className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-1.5 rounded-xl text-[11px] font-medium transition-all ${
+          className={`flex flex-col items-center justify-center min-w-[50px] py-1 px-1 rounded-xl text-[10px] font-medium transition-all ${
             currentView === 'cards' 
               ? 'text-emerald-700 font-bold bg-emerald-50' 
               : 'text-slate-500 active:bg-slate-100'
@@ -873,15 +1020,15 @@ export default function App() {
         </button>
 
         <button
-          onClick={() => setCurrentView('matrix')}
-          className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-1.5 rounded-xl text-[11px] font-medium transition-all ${
-            currentView === 'matrix' 
-              ? 'text-emerald-700 font-bold bg-emerald-50' 
-              : 'text-slate-500 active:bg-slate-100'
+          onClick={() => setCurrentView('excel-compare')}
+          className={`flex flex-col items-center justify-center min-w-[50px] py-1 px-1 rounded-xl text-[10px] font-medium transition-all ${
+            currentView === 'excel-compare' 
+              ? 'text-emerald-800 font-black bg-emerald-100/80 ring-1 ring-emerald-400/40' 
+              : 'text-emerald-700 font-semibold active:bg-emerald-50'
           }`}
         >
-          <Table2 className="w-4 h-4 mb-0.5" />
-          <span>Matriks</span>
+          <FileSpreadsheet className="w-4 h-4 mb-0.5 text-emerald-700" />
+          <span>Komparasi</span>
         </button>
 
         {/* Center Floating Action Button */}
@@ -891,26 +1038,26 @@ export default function App() {
             setIsProductModalOpen(true);
           }}
           aria-label="Tambah Produk Baru"
-          className="flex flex-col items-center justify-center -mt-6 bg-emerald-600 active:bg-emerald-700 text-white w-12 h-12 rounded-full shadow-lg shadow-emerald-600/30 ring-4 ring-white active:scale-95 transition-transform"
+          className="flex flex-col items-center justify-center -mt-5 bg-emerald-600 active:bg-emerald-700 text-white w-11 h-11 rounded-full shadow-lg shadow-emerald-600/30 ring-4 ring-white active:scale-95 transition-transform"
         >
-          <Plus className="w-6 h-6 stroke-[2.5]" />
+          <Plus className="w-5 h-5 stroke-[2.5]" />
         </button>
 
         <button
-          onClick={() => setCurrentView('simulation')}
-          className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-1.5 rounded-xl text-[11px] font-medium transition-all ${
-            currentView === 'simulation' 
+          onClick={() => setCurrentView('matrix')}
+          className={`flex flex-col items-center justify-center min-w-[50px] py-1 px-1 rounded-xl text-[10px] font-medium transition-all ${
+            currentView === 'matrix' 
               ? 'text-emerald-700 font-bold bg-emerald-50' 
               : 'text-slate-500 active:bg-slate-100'
           }`}
         >
-          <Calculator className="w-4 h-4 mb-0.5" />
-          <span>Simulasi</span>
+          <Table2 className="w-4 h-4 mb-0.5" />
+          <span>Matriks</span>
         </button>
 
         <button
           onClick={() => setCurrentView('suppliers')}
-          className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-1.5 rounded-xl text-[11px] font-medium transition-all ${
+          className={`flex flex-col items-center justify-center min-w-[50px] py-1 px-1 rounded-xl text-[10px] font-medium transition-all ${
             currentView === 'suppliers' 
               ? 'text-emerald-700 font-bold bg-emerald-50' 
               : 'text-slate-500 active:bg-slate-100'
@@ -959,11 +1106,19 @@ export default function App() {
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onConfirmImport={handleConfirmImport}
+        settings={settings}
       />
 
       <PWAInstallModal
         isOpen={isPWAInstallModalOpen}
         onClose={() => setIsPWAInstallModalOpen(false)}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        settings={settings}
+        onSaveSettings={handleSaveSettings}
       />
 
       <OfflineIndicator />

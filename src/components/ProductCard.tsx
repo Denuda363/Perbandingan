@@ -14,13 +14,16 @@ import {
   AlertCircle,
   Building2,
   Layers,
-  PackageCheck
+  PackageCheck,
+  TrendingUp,
+  Tag
 } from 'lucide-react';
-import { Product, SupplierQuote } from '../types';
-import { formatRupiah, getProductPriceStats } from '../utils/formatters';
+import { Product, SupplierQuote, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
+import { formatRupiah, getProductPriceStats, calculateSellingPrice } from '../utils/formatters';
 
 interface ProductCardProps {
   product: Product;
+  settings?: AppSettings;
   onAddQuote: (product: Product) => void;
   onEditQuote: (product: Product, quote: SupplierQuote) => void;
   onDeleteQuote: (productId: string, quoteId: string) => void;
@@ -31,6 +34,7 @@ interface ProductCardProps {
 
 export const ProductCard: React.FC<ProductCardProps> = ({
   product,
+  settings = DEFAULT_APP_SETTINGS,
   onAddQuote,
   onEditQuote,
   onDeleteQuote,
@@ -50,6 +54,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
   const subCount = product.subUnitCount || 10;
   const subName = product.subUnitName || 'lembar';
+
+  const cheapestSelling = stats.cheapestQuote 
+    ? calculateSellingPrice(stats.cheapestQuote.price, settings)
+    : null;
 
   return (
     <div 
@@ -161,30 +169,30 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         </div>
 
         {/* Highlight Best Deal Section */}
-        {stats.cheapestQuote ? (
-          <div className="mt-3.5 p-3 rounded-lg bg-emerald-50/80 border border-emerald-200/80">
-            <div className="flex items-center justify-between gap-3">
+        {stats.cheapestQuote && cheapestSelling ? (
+          <div className="mt-3.5 p-3 sm:p-3.5 rounded-xl bg-gradient-to-br from-emerald-50/90 to-teal-50/70 border border-emerald-200/90 shadow-2xs">
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded uppercase tracking-wider">
                     <Award className="w-3 h-3 text-emerald-700" />
-                    Harga Termurah
+                    Supplier Termurah
                   </span>
-                  <span className="text-xs font-semibold text-slate-800">
+                  <span className="text-xs font-bold text-slate-900">
                     {stats.cheapestQuote.supplierName}
                   </span>
                 </div>
                 
+                {/* Modal Beli */}
                 <div className="flex items-baseline gap-2 mt-1 flex-wrap">
-                  <span className="text-lg sm:text-xl font-extrabold text-emerald-700">
+                  <span className="text-xs text-slate-500 font-semibold">Modal Beli:</span>
+                  <span className="text-base sm:text-lg font-bold text-slate-800">
                     {formatRupiah(stats.cheapestQuote.price)}
                   </span>
-                  <span className="text-xs text-slate-600 font-medium">
+                  <span className="text-xs text-slate-500">
                     / {stats.cheapestQuote.unit || product.defaultUnit}
                   </span>
-                  
-                  {/* Satuan kecil (lembar) */}
-                  <span className="text-[11px] text-blue-700 font-bold bg-blue-100/80 px-1.5 py-0.5 rounded">
+                  <span className="text-[11px] text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
                     ~{formatRupiah(stats.cheapestQuote.pricePerSubUnit || Math.round(stats.cheapestQuote.price / subCount))} / {subName}
                   </span>
                 </div>
@@ -196,19 +204,42 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                     <TrendingDown className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
                     <span>Hemat {stats.savingsPercentage}%</span>
                   </div>
-                  <p className="text-[11px] text-slate-500 mt-1">
+                  <p className="text-[11px] text-slate-500 mt-0.5">
                     Selisih {formatRupiah(stats.difference)}
                   </p>
                 </div>
               )}
             </div>
 
-            {/* PPN Badge if available */}
-            <div className="mt-2 pt-2 border-t border-emerald-200/60 flex items-center justify-between text-[11px] text-slate-600">
-              <span>Termasuk PPN 11%:</span>
-              <span className="font-bold text-slate-800">
-                {formatRupiah(stats.cheapestQuote.priceWithPpn || Math.round(stats.cheapestQuote.price * 1.11))} / {stats.cheapestQuote.unit || product.defaultUnit}
-              </span>
+            {/* Rekomendasi Harga Jual (+ Margin) */}
+            <div className="mt-2.5 pt-2.5 border-t border-emerald-200/70 flex flex-col xs:flex-row xs:items-center justify-between gap-1.5 bg-white/90 p-2.5 rounded-lg border border-emerald-100">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-900 bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3 text-emerald-700" />
+                    Harga Jual (+{settings.marginPercent}% Margin):
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1.5 mt-1 flex-wrap">
+                  <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono">
+                    {formatRupiah(cheapestSelling.sellingPrice)}
+                  </span>
+                  <span className="text-xs text-slate-600 font-medium">
+                    / {stats.cheapestQuote.unit || product.defaultUnit}
+                  </span>
+                  <span className="text-[11px] text-emerald-800 bg-emerald-100/90 font-bold px-1.5 py-0.5 rounded">
+                    ~{formatRupiah(Math.round(cheapestSelling.sellingPrice / subCount))} / {subName}
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-left xs:text-right text-[11px] shrink-0">
+                <span className="text-slate-600">Estimasi Laba: </span>
+                <span className="font-extrabold text-emerald-700">+{formatRupiah(cheapestSelling.profitPerUnit)}</span>
+                <p className="text-[10px] text-slate-400">
+                  {settings.ppnEnabled ? `(PPN ${settings.ppnPercent}% aktif)` : '(Non-PPN)'}
+                </p>
+              </div>
             </div>
           </div>
         ) : (
@@ -250,14 +281,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   : 0;
 
                 const lembarPrice = quote.pricePerSubUnit || Math.round(quote.price / subCount);
-                const ppnPrice = quote.priceWithPpn || Math.round(quote.price * 1.11);
+                const quoteSelling = calculateSellingPrice(quote.price, settings);
 
                 return (
                   <div
                     key={quote.id}
-                    className={`p-3 rounded-lg border text-xs transition-all ${
+                    className={`p-3 rounded-xl border text-xs transition-all ${
                       isCheapest
-                        ? 'bg-emerald-50/40 border-emerald-200'
+                        ? 'bg-emerald-50/40 border-emerald-200 shadow-2xs'
                         : 'bg-slate-50/60 border-slate-200/80 hover:bg-slate-100/60'
                     }`}
                   >
@@ -301,9 +332,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                             {formatRupiah(lembarPrice)} / {subName}
                           </span>
                           <span className="text-slate-300">•</span>
-                          <span className="text-purple-700 font-medium">
-                            +PPN 11%: <strong>{formatRupiah(ppnPrice)}</strong>
-                          </span>
+                          {settings.ppnEnabled ? (
+                            <span className="text-purple-700 font-medium">
+                              +PPN {settings.ppnPercent}%: <strong>{formatRupiah(quoteSelling.costWithPpn)}</strong>
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 font-medium">
+                              Non-PPN
+                            </span>
+                          )}
                         </div>
 
                         {/* Extra Quote Details: MOQ, lead time, notes */}
@@ -330,7 +367,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
                       {/* Pricing column with difference */}
                       <div className="text-right shrink-0">
-                        <span className="text-[10px] text-slate-400 block font-semibold">HARGA JADI BOX</span>
+                        <span className="text-[10px] text-slate-400 block font-semibold">MODAL BELI</span>
                         <p className={`font-extrabold text-base ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
                           {formatRupiah(quote.price)}
                         </p>
@@ -344,6 +381,26 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                             {quote.lastUpdated}
                           </p>
                         )}
+                      </div>
+                    </div>
+
+                    {/* Prominent Selling Price Row (+ Margin %) */}
+                    <div className="mt-2 pt-2 border-t border-slate-200/70 flex items-center justify-between flex-wrap gap-1.5 bg-emerald-50/50 -mx-3 -mb-3 px-3 py-2 rounded-b-xl">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-900 bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-1">
+                          <TrendingUp className="w-3 h-3 text-emerald-700" />
+                          Harga Jual (+{settings.marginPercent}%):
+                        </span>
+                        <span className="text-xs font-black text-emerald-800 font-mono">
+                          {formatRupiah(quoteSelling.sellingPrice)}
+                        </span>
+                        <span className="text-[10px] text-slate-600 font-medium">
+                          (~{formatRupiah(Math.round(quoteSelling.sellingPrice / subCount))}/{subName})
+                        </span>
+                      </div>
+
+                      <div className="text-[11px] text-emerald-800 font-semibold">
+                        Laba: <span className="font-bold text-emerald-700">+{formatRupiah(quoteSelling.profitPerUnit)}</span>
                       </div>
                     </div>
 
