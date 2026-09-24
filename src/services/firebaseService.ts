@@ -10,7 +10,52 @@ import {
   limit,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Product, Supplier, SupplierQuote, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
+import { Product, Supplier, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errMessage = error instanceof Error ? error.message : String(error);
+  const errInfo: FirestoreErrorInfo = {
+    error: errMessage,
+    authInfo: {
+      userId: null,
+      email: null,
+      emailVerified: null,
+      isAnonymous: true,
+      tenantId: null,
+      providerInfo: [],
+    },
+    operationType,
+    path,
+  };
+  console.warn('Firestore Operation Notice:', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 // Helper to remove undefined properties before saving to Firestore
 function sanitizeForFirestore<T>(obj: T): T {
@@ -23,7 +68,7 @@ const SETTINGS_COLLECTION = 'settings';
 const APP_CONFIG_DOC_ID = 'app_config';
 
 /**
- * Subscribe to real-time updates for products
+ * Subscribe to real-time updates for products with offline fallback
  */
 export function subscribeToProducts(
   onUpdate: (products: Product[]) => void,
@@ -45,14 +90,23 @@ export function subscribeToProducts(
       onUpdate(items);
     },
     (err) => {
-      console.error('Realtime products listener error:', err);
+      const isOfflineOrUnavailable = 
+        err.code === 'unavailable' || 
+        err.message.includes('offline') || 
+        err.message.includes('Could not reach Cloud Firestore');
+
+      if (isOfflineOrUnavailable) {
+        console.info('Products sync operating in local offline mode.');
+      } else {
+        console.error('Realtime products listener error:', err);
+      }
       if (onError) onError(err);
     }
   );
 }
 
 /**
- * Subscribe to real-time updates for suppliers
+ * Subscribe to real-time updates for suppliers with offline fallback
  */
 export function subscribeToSuppliers(
   onUpdate: (suppliers: Supplier[]) => void,
@@ -73,7 +127,16 @@ export function subscribeToSuppliers(
       onUpdate(items);
     },
     (err) => {
-      console.error('Realtime suppliers listener error:', err);
+      const isOfflineOrUnavailable = 
+        err.code === 'unavailable' || 
+        err.message.includes('offline') || 
+        err.message.includes('Could not reach Cloud Firestore');
+
+      if (isOfflineOrUnavailable) {
+        console.info('Suppliers sync operating in local offline mode.');
+      } else {
+        console.error('Realtime suppliers listener error:', err);
+      }
       if (onError) onError(err);
     }
   );
@@ -85,7 +148,11 @@ export function subscribeToSuppliers(
 export async function saveProductToFirestore(product: Product): Promise<void> {
   const docRef = doc(db, PRODUCTS_COLLECTION, product.id);
   const cleanData = sanitizeForFirestore(product);
-  await setDoc(docRef, cleanData, { merge: true });
+  try {
+    await setDoc(docRef, cleanData, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${PRODUCTS_COLLECTION}/${product.id}`);
+  }
 }
 
 /**
@@ -93,7 +160,11 @@ export async function saveProductToFirestore(product: Product): Promise<void> {
  */
 export async function deleteProductFromFirestore(productId: string): Promise<void> {
   const docRef = doc(db, PRODUCTS_COLLECTION, productId);
-  await deleteDoc(docRef);
+  try {
+    await deleteDoc(docRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `${PRODUCTS_COLLECTION}/${productId}`);
+  }
 }
 
 /**
@@ -102,7 +173,11 @@ export async function deleteProductFromFirestore(productId: string): Promise<voi
 export async function saveSupplierToFirestore(supplier: Supplier): Promise<void> {
   const docRef = doc(db, SUPPLIERS_COLLECTION, supplier.id);
   const cleanData = sanitizeForFirestore(supplier);
-  await setDoc(docRef, cleanData, { merge: true });
+  try {
+    await setDoc(docRef, cleanData, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${SUPPLIERS_COLLECTION}/${supplier.id}`);
+  }
 }
 
 /**
@@ -110,7 +185,11 @@ export async function saveSupplierToFirestore(supplier: Supplier): Promise<void>
  */
 export async function deleteSupplierFromFirestore(supplierId: string): Promise<void> {
   const docRef = doc(db, SUPPLIERS_COLLECTION, supplierId);
-  await deleteDoc(docRef);
+  try {
+    await deleteDoc(docRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `${SUPPLIERS_COLLECTION}/${supplierId}`);
+  }
 }
 
 /**
@@ -120,23 +199,27 @@ export async function batchSaveToFirestore(
   products: Product[],
   suppliers: Supplier[]
 ): Promise<void> {
-  const batch = writeBatch(db);
+  try {
+    const batch = writeBatch(db);
 
-  products.forEach((p) => {
-    const pRef = doc(db, PRODUCTS_COLLECTION, p.id);
-    batch.set(pRef, sanitizeForFirestore(p), { merge: true });
-  });
+    products.forEach((p) => {
+      const pRef = doc(db, PRODUCTS_COLLECTION, p.id);
+      batch.set(pRef, sanitizeForFirestore(p), { merge: true });
+    });
 
-  suppliers.forEach((s) => {
-    const sRef = doc(db, SUPPLIERS_COLLECTION, s.id);
-    batch.set(sRef, sanitizeForFirestore(s), { merge: true });
-  });
+    suppliers.forEach((s) => {
+      const sRef = doc(db, SUPPLIERS_COLLECTION, s.id);
+      batch.set(sRef, sanitizeForFirestore(s), { merge: true });
+    });
 
-  await batch.commit();
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'batchSaveToFirestore');
+  }
 }
 
 /**
- * Check if database has any existing data; if not, seed with initial data
+ * Check if database has any existing data; if not, seed with initial data safely
  */
 export async function seedInitialDataIfEmpty(
   initialProducts: Product[],
@@ -153,14 +236,14 @@ export async function seedInitialDataIfEmpty(
     }
     return false;
   } catch (err) {
-    console.error('Failed to seed initial Firestore data:', err);
+    console.info('Note: Seed skipped or running in offline mode:', err instanceof Error ? err.message : String(err));
     return false;
   }
 }
 
 /**
-  * Subscribe to real-time updates for application settings (PPN, margin)
-  */
+ * Subscribe to real-time updates for application settings (PPN, margin)
+ */
 export function subscribeToSettings(
   onUpdate: (settings: AppSettings) => void,
   onError?: (err: Error) => void
@@ -176,22 +259,34 @@ export function subscribeToSettings(
           ...data,
         });
       } else {
-        // Document does not exist yet, fallback to default
         onUpdate(DEFAULT_APP_SETTINGS);
       }
     },
     (err) => {
-      console.error('Realtime settings listener error:', err);
+      const isOfflineOrUnavailable = 
+        err.code === 'unavailable' || 
+        err.message.includes('offline') || 
+        err.message.includes('Could not reach Cloud Firestore');
+
+      if (isOfflineOrUnavailable) {
+        console.info('Settings sync operating in local offline mode.');
+      } else {
+        console.error('Realtime settings listener error:', err);
+      }
       if (onError) onError(err);
     }
   );
 }
 
 /**
-  * Save application settings (PPN & Margin) to Firestore
-  */
+ * Save application settings (PPN & Margin) to Firestore
+ */
 export async function saveSettingsToFirestore(settings: AppSettings): Promise<void> {
   const docRef = doc(db, SETTINGS_COLLECTION, APP_CONFIG_DOC_ID);
   const cleanData = sanitizeForFirestore(settings);
-  await setDoc(docRef, cleanData, { merge: true });
+  try {
+    await setDoc(docRef, cleanData, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${SETTINGS_COLLECTION}/${APP_CONFIG_DOC_ID}`);
+  }
 }

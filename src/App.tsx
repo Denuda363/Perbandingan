@@ -132,13 +132,11 @@ export default function App() {
     let unsubSuppliers = () => {};
     let unsubSettings = () => {};
 
-    async function initFirebaseSync() {
+    function initFirebaseSync() {
       try {
-        setSyncStatus('syncing');
-        // If Firestore is completely fresh and empty, seed initial master catalog
-        await seedInitialDataIfEmpty(INITIAL_PRODUCTS, INITIAL_SUPPLIERS);
+        setSyncStatus(navigator.onLine ? 'syncing' : 'offline');
 
-        // Realtime listener for products
+        // Immediately attach listeners so cached/local data is displayed with zero lag
         unsubProducts = subscribeToProducts(
           (remoteProducts) => {
             if (remoteProducts.length > 0) {
@@ -147,12 +145,11 @@ export default function App() {
             setSyncStatus('connected');
           },
           (err) => {
-            console.error('Realtime products listener error:', err);
-            setSyncStatus(navigator.onLine ? 'error' : 'offline');
+            const isOffline = (err as any)?.code === 'unavailable' || err?.message?.includes('offline') || !navigator.onLine;
+            setSyncStatus(isOffline ? 'offline' : 'offline');
           }
         );
 
-        // Realtime listener for suppliers
         unsubSuppliers = subscribeToSuppliers(
           (remoteSuppliers) => {
             if (remoteSuppliers.length > 0) {
@@ -161,12 +158,11 @@ export default function App() {
             setSyncStatus('connected');
           },
           (err) => {
-            console.error('Realtime suppliers listener error:', err);
-            setSyncStatus(navigator.onLine ? 'error' : 'offline');
+            const isOffline = (err as any)?.code === 'unavailable' || err?.message?.includes('offline') || !navigator.onLine;
+            setSyncStatus(isOffline ? 'offline' : 'offline');
           }
         );
 
-        // Realtime listener for app settings (PPN & Margin)
         unsubSettings = subscribeToSettings(
           (remoteSettings) => {
             if (remoteSettings) {
@@ -174,13 +170,14 @@ export default function App() {
               localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(remoteSettings));
             }
           },
-          (err) => {
-            console.error('Realtime settings listener error:', err);
-          }
+          () => {}
         );
+
+        // Seed initial data in the background if collection is completely fresh
+        seedInitialDataIfEmpty(INITIAL_PRODUCTS, INITIAL_SUPPLIERS).catch(() => {});
       } catch (e) {
-        console.error('Firebase sync init failed:', e);
-        setSyncStatus(navigator.onLine ? 'error' : 'offline');
+        console.warn('Firebase sync initialized in offline mode:', e);
+        setSyncStatus('offline');
       }
     }
 
@@ -1093,6 +1090,7 @@ export default function App() {
         selectedProduct={quoteSelectedProduct}
         quoteToEdit={quoteToEdit}
         onSaveQuote={handleSaveQuote}
+        settings={settings}
       />
 
       <SupplierModal

@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Pharmaceutical product data with packaging and quotes from multiple suppliers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique product ID" },
+        "name": { "type": "string", "description": "Trade or generic medicine name" },
+        "genericName": { "type": "string", "description": "Active pharmaceutical ingredient" },
+        "category": { "type": "string", "description": "Therapeutic category" },
+        "company": { "type": "string", "description": "Manufacturer or pharmaceutical company" },
+        "packaging": { "type": "string", "description": "Packaging description e.g. Box 10 Strip" },
+        "defaultUnit": { "type": "string", "description": "Primary purchase unit e.g. Box" },
+        "subUnitName": { "type": "string", "description": "Sub unit e.g. lembar or strip" },
+        "subUnitCount": { "type": "number", "description": "Number of sub units per box" },
+        "quotes": { "type": "array", "description": "List of supplier quotations" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Last update timestamp" }
+      },
+      "required": ["id", "name"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Pharmaceutical distributor (PBF) or vendor",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique supplier ID" },
+        "name": { "type": "string", "description": "Supplier / PBF name" },
+        "contactPerson": { "type": "string", "description": "Sales or contact person" },
+        "phone": { "type": "string", "description": "Phone or WhatsApp number" },
+        "email": { "type": "string", "description": "Email address" },
+        "address": { "type": "string", "description": "Office or warehouse address" },
+        "paymentTerms": { "type": "string", "description": "Payment terms (TOP)" },
+        "rating": { "type": "number", "description": "Vendor rating" }
+      },
+      "required": ["id", "name"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Pharmacy procurement configuration including tax, discount defaults, and margin rules",
+      "type": "object",
+      "properties": {
+        "ppnPercent": { "type": "number", "description": "PPN percentage e.g. 11" },
+        "ppnEnabled": { "type": "boolean", "description": "Whether PPN is enabled" },
+        "marginPercent": { "type": "number", "description": "Default profit margin in percent" },
+        "marginType": { "type": "string", "description": "Margin type: percent or amount" },
+        "marginAmountValue": { "type": "number", "description": "Fixed margin amount in IDR" },
+        "defaultDiscount1Type": { "type": "string", "description": "Default discount 1 type: percent or amount" },
+        "defaultDiscount1Value": { "type": "number", "description": "Default discount 1 value" },
+        "defaultDiscount2Type": { "type": "string", "description": "Default discount 2 type: percent or amount" },
+        "defaultDiscount2Value": { "type": "number", "description": "Default discount 2 value" },
+        "roundingOption": { "type": "string", "description": "Rounding strategy: none, hundred, thousand" }
+      },
+      "required": ["ppnPercent", "marginPercent"]
+    },
+    "TestConnection": {
+      "title": "TestConnection",
+      "description": "Healthcheck connection document for Firestore verification",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "description": "Connection status" }
+      }
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of pharmacy products and supplier quotations"
+    },
+    "/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "Collection of pharmaceutical distributors and vendors"
+    },
+    "/settings/{settingId}": {
+      "schema": "AppSettings",
+      "description": "Application settings document (app_config)"
+    },
+    "/test/{docId}": {
+      "schema": "TestConnection",
+      "description": "Firestore connection validation endpoint"
+    }
+  }
+}

@@ -11,6 +11,7 @@ import {
   Search,
   ChevronDown,
   TrendingDown,
+  TrendingUp,
   CheckCircle2,
   Percent,
   Plus,
@@ -18,10 +19,13 @@ import {
   Sparkles,
   Package,
   Award,
-  AlertCircle
+  AlertCircle,
+  Receipt,
+  Layers,
+  ArrowRight
 } from 'lucide-react';
-import { Product, Supplier, SupplierQuote } from '../types';
-import { calculatePharmaPricing, formatRupiah, getProductPriceStats } from '../utils/formatters';
+import { Product, Supplier, SupplierQuote, AppSettings, DEFAULT_APP_SETTINGS, DiscountType, MarginType } from '../types';
+import { calculateMarginFormula, formatRupiah, getProductPriceStats } from '../utils/formatters';
 
 interface AddQuoteModalProps {
   isOpen: boolean;
@@ -31,6 +35,7 @@ interface AddQuoteModalProps {
   selectedProduct?: Product | null;
   quoteToEdit?: SupplierQuote | null;
   onSaveQuote: (productId: string, quote: Partial<SupplierQuote>) => void;
+  settings?: AppSettings;
 }
 
 export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
@@ -41,16 +46,34 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
   selectedProduct,
   quoteToEdit,
   onSaveQuote,
+  settings = DEFAULT_APP_SETTINGS,
 }) => {
   const [productId, setProductId] = useState('');
   const [supplierName, setSupplierName] = useState('');
-  const [priceInputMode, setPriceInputMode] = useState<'direct' | 'hna_discount'>('direct');
+  const [priceInputMode, setPriceInputMode] = useState<'formula' | 'direct'>('formula');
   
-  // Price state values
-  const [hna, setHna] = useState<string>('');
-  const [discountPercent, setDiscountPercent] = useState<string>('');
-  const [price, setPrice] = useState<string>('');
+  // Formula inputs: (Modal - diskon 1 - diskon 2 + ppn) + margin
+  const [modalCost, setModalCost] = useState<string>('');
   
+  // Diskon 1 (% atau Rp)
+  const [discount1Value, setDiscount1Value] = useState<string>('');
+  const [discount1Type, setDiscount1Type] = useState<DiscountType>('percent');
+  
+  // Diskon 2 (% atau Rp)
+  const [discount2Value, setDiscount2Value] = useState<string>('');
+  const [discount2Type, setDiscount2Type] = useState<DiscountType>('percent');
+
+  // PPN
+  const [ppnEnabled, setPpnEnabled] = useState<boolean>(true);
+  const [ppnPercent, setPpnPercent] = useState<number>(settings.ppnPercent || 11);
+
+  // Margin (% atau Rp)
+  const [marginValue, setMarginValue] = useState<string>('25');
+  const [marginType, setMarginType] = useState<MarginType>('percent');
+
+  // Direct price (for direct mode)
+  const [directPrice, setDirectPrice] = useState<string>('');
+
   const [unit, setUnit] = useState('');
   const [moq, setMoq] = useState<string>('1');
   const [leadTimeDays, setLeadTimeDays] = useState<string>('1');
@@ -80,49 +103,121 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
 
     if (quoteToEdit) {
       setSupplierName(quoteToEdit.supplierName);
-      setHna(quoteToEdit.hna ? quoteToEdit.hna.toString() : quoteToEdit.price.toString());
-      setDiscountPercent(quoteToEdit.discountPercent !== undefined ? quoteToEdit.discountPercent.toString() : '0');
-      setPrice(quoteToEdit.price.toString());
+      
+      const baseCost = quoteToEdit.hna ? quoteToEdit.hna : quoteToEdit.price;
+      setModalCost(baseCost > 0 ? baseCost.toString() : '');
+      
+      // Diskon 1
+      if (quoteToEdit.discount1Value !== undefined) {
+        setDiscount1Value(quoteToEdit.discount1Value.toString());
+        setDiscount1Type(quoteToEdit.discount1Type || 'percent');
+      } else if (quoteToEdit.discountPercent !== undefined && quoteToEdit.discountPercent > 0) {
+        setDiscount1Value(quoteToEdit.discountPercent.toString());
+        setDiscount1Type('percent');
+      } else {
+        setDiscount1Value('');
+        setDiscount1Type('percent');
+      }
+
+      // Diskon 2
+      if (quoteToEdit.discount2Value !== undefined) {
+        setDiscount2Value(quoteToEdit.discount2Value.toString());
+        setDiscount2Type(quoteToEdit.discount2Type || 'percent');
+      } else {
+        setDiscount2Value('');
+        setDiscount2Type('percent');
+      }
+
+      // PPN
+      setPpnEnabled(settings.ppnEnabled !== false);
+      setPpnPercent(settings.ppnPercent || 11);
+
+      // Margin
+      if (quoteToEdit.marginValue !== undefined) {
+        setMarginValue(quoteToEdit.marginValue.toString());
+        setMarginType(quoteToEdit.marginType || 'percent');
+      } else {
+        setMarginValue(settings.marginType === 'amount' ? settings.marginAmountValue.toString() : settings.marginPercent.toString());
+        setMarginType(settings.marginType || 'percent');
+      }
+
+      setDirectPrice(quoteToEdit.price.toString());
       setUnit(quoteToEdit.unit);
       setMoq((quoteToEdit.moq || 1).toString());
       setLeadTimeDays((quoteToEdit.leadTimeDays || 1).toString());
       setNotes(quoteToEdit.notes || '');
       setInStock(quoteToEdit.inStock !== false);
 
-      // If quote originally had discount, start on hna_discount mode; otherwise direct
-      if (quoteToEdit.discountPercent && quoteToEdit.discountPercent > 0) {
-        setPriceInputMode('hna_discount');
-      } else {
-        setPriceInputMode('direct');
-      }
+      // Start on formula mode
+      setPriceInputMode('formula');
     } else {
       setSupplierName(suppliers[0]?.name || '');
-      setHna('');
-      setDiscountPercent('');
-      setPrice('');
+      setModalCost('');
+      setDiscount1Value(settings.defaultDiscount1Value > 0 ? settings.defaultDiscount1Value.toString() : '');
+      setDiscount1Type(settings.defaultDiscount1Type || 'percent');
+      setDiscount2Value(settings.defaultDiscount2Value > 0 ? settings.defaultDiscount2Value.toString() : '');
+      setDiscount2Type(settings.defaultDiscount2Type || 'percent');
+      setPpnEnabled(settings.ppnEnabled);
+      setPpnPercent(settings.ppnPercent || 11);
+      setMarginValue(settings.marginType === 'amount' ? settings.marginAmountValue.toString() : settings.marginPercent.toString());
+      setMarginType(settings.marginType || 'percent');
+      setDirectPrice('');
       setMoq('1');
       setLeadTimeDays('1');
       setNotes('');
       setInStock(true);
-      setPriceInputMode('direct');
+      setPriceInputMode('formula');
     }
 
     setProductSearchQuery('');
     setIsProductSelectorOpen(false);
-  }, [selectedProduct, quoteToEdit, isOpen, products, suppliers]);
+  }, [selectedProduct, quoteToEdit, isOpen, products, suppliers, settings]);
 
-  // Pricing calculations
-  const parsedHna = parseFloat(hna) || 0;
-  const parsedDisk = parseFloat(discountPercent) || 0;
-  const parsedPrice = parseFloat(price) || 0;
+  // Pricing calculations using the user's formula: (Modal - diskon 1 - diskon 2 + ppn) + margin
+  const parsedModal = parseFloat(modalCost) || 0;
+  const parsedD1Val = parseFloat(discount1Value) || 0;
+  const parsedD2Val = parseFloat(discount2Value) || 0;
+  const parsedMarginVal = parseFloat(marginValue) || 0;
+  const parsedDirect = parseFloat(directPrice) || 0;
 
-  const pharmaCalc = calculatePharmaPricing({
-    hna: parsedHna,
-    discountPercent: parsedDisk,
-    hargaJadiBoxInput: parsedPrice > 0 ? parsedPrice : undefined,
-    subUnitCount: subCount,
-    subUnitName: subName,
-  });
+  const formulaCalc = useMemo(() => {
+    const effectiveBaseModal = priceInputMode === 'formula' ? parsedModal : parsedDirect;
+
+    return calculateMarginFormula({
+      modal: effectiveBaseModal,
+      discount1Value: priceInputMode === 'formula' ? parsedD1Val : 0,
+      discount1Type,
+      discount2Value: priceInputMode === 'formula' ? parsedD2Val : 0,
+      discount2Type,
+      ppnPercent,
+      ppnEnabled,
+      marginValue: parsedMarginVal,
+      marginType,
+      roundingOption: settings.roundingOption,
+      subUnitCount: subCount,
+      subUnitName: subName,
+    });
+  }, [
+    priceInputMode,
+    parsedModal,
+    parsedDirect,
+    parsedD1Val,
+    discount1Type,
+    parsedD2Val,
+    discount2Type,
+    ppnPercent,
+    ppnEnabled,
+    parsedMarginVal,
+    marginType,
+    settings.roundingOption,
+    subCount,
+    subName,
+  ]);
+
+  // Effective net purchase cost per box
+  const finalEffectiveNetPrice = priceInputMode === 'formula'
+    ? (parsedModal > 0 ? formulaCalc.netCostAfterDiscounts : 0)
+    : parsedDirect;
 
   // Filter products for search selector
   const filteredProducts = useMemo(() => {
@@ -140,7 +235,6 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
     });
   }, [products, productSearchQuery]);
 
-  // When user selects a product from search
   const handleSelectProduct = (prod: Product) => {
     setProductId(prod.id);
     setUnit(prod.defaultUnit);
@@ -148,70 +242,23 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
     setProductSearchQuery('');
   };
 
-  // Price change handlers with auto sync
-  const handleDirectPriceChange = (val: string) => {
-    setPrice(val);
-    const numPrice = parseFloat(val) || 0;
-    const numHna = parseFloat(hna) || 0;
-    if (numHna > 0 && numPrice > 0 && numHna >= numPrice) {
-      const calcDisk = parseFloat((((numHna - numPrice) / numHna) * 100).toFixed(2));
-      setDiscountPercent(calcDisk.toString());
-    }
+  // Quick discount presets
+  const applyQuickD1 = (val: number, type: DiscountType) => {
+    setDiscount1Type(type);
+    setDiscount1Value(val.toString());
   };
 
-  const handleHnaChange = (val: string) => {
-    setHna(val);
-    const numHna = parseFloat(val) || 0;
-    const numDisk = parseFloat(discountPercent) || 0;
-    if (numHna > 0) {
-      const calc = Math.max(0, Math.round(numHna * (1 - numDisk / 100)));
-      setPrice(calc > 0 ? calc.toString() : '');
-    }
+  const applyQuickD2 = (val: number, type: DiscountType) => {
+    setDiscount2Type(type);
+    setDiscount2Value(val.toString());
   };
 
-  const handleDiscountChange = (val: string) => {
-    setDiscountPercent(val);
-    const numDisk = parseFloat(val) || 0;
-    const numHna = parseFloat(hna) || 0;
-    if (numHna > 0) {
-      const calc = Math.max(0, Math.round(numHna * (1 - numDisk / 100)));
-      setPrice(calc > 0 ? calc.toString() : '');
-    }
+  const applyQuickMargin = (val: number, type: MarginType) => {
+    setMarginType(type);
+    setMarginValue(val.toString());
   };
 
-  // Quick preset discount buttons (common in pharma procurement)
-  const applyQuickDiscount = (pct: number) => {
-    const pctStr = pct.toString();
-    setDiscountPercent(pctStr);
-    const numHna = parseFloat(hna) || 0;
-    if (numHna > 0) {
-      const calc = Math.max(0, Math.round(numHna * (1 - pct / 100)));
-      setPrice(calc.toString());
-    }
-  };
-
-  // Quick price adjustments (+/-)
-  const adjustPriceBy = (delta: number) => {
-    const current = parseFloat(price) || (pharmaCalc.hargaJadiBox > 0 ? pharmaCalc.hargaJadiBox : 0);
-    const next = Math.max(0, current + delta);
-    setPrice(next > 0 ? next.toString() : '');
-    const numHna = parseFloat(hna) || 0;
-    if (numHna > 0 && next > 0 && numHna >= next) {
-      const calcDisk = parseFloat((((numHna - next) / numHna) * 100).toFixed(2));
-      setDiscountPercent(calcDisk.toString());
-    }
-  };
-
-  // Round price to nearest hundred
-  const roundPriceToHundred = () => {
-    const current = parseFloat(price) || 0;
-    if (current > 0) {
-      const rounded = Math.round(current / 100) * 100;
-      setPrice(rounded.toString());
-    }
-  };
-
-  // Check competitor price stats
+  // Competitor stats
   const competitorStats = useMemo(() => {
     if (!activeProduct) return null;
     return getProductPriceStats(activeProduct);
@@ -221,8 +268,7 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const finalPrice = parsedPrice > 0 ? parsedPrice : pharmaCalc.hargaJadiBox;
-    if (!productId || !supplierName.trim() || finalPrice <= 0) return;
+    if (!productId || !supplierName.trim() || finalEffectiveNetPrice <= 0) return;
 
     const matchedSupplier = suppliers.find(
       (s) => s.name.toLowerCase() === supplierName.trim().toLowerCase()
@@ -232,11 +278,21 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
       id: quoteToEdit ? quoteToEdit.id : `q-${Date.now()}`,
       supplierId: matchedSupplier ? matchedSupplier.id : `sup-${Date.now()}`,
       supplierName: supplierName.trim(),
-      price: finalPrice,
-      hna: parsedHna > 0 ? parsedHna : finalPrice,
-      discountPercent: parsedDisk > 0 ? parsedDisk : 0,
-      pricePerSubUnit: Math.round(finalPrice / subCount),
-      priceWithPpn: Math.round(finalPrice * 1.11),
+      price: finalEffectiveNetPrice, // Modal bersih setelah diskon
+      hna: parsedModal > 0 ? parsedModal : finalEffectiveNetPrice,
+      discount1Type,
+      discount1Value: parsedD1Val,
+      discountPercent: discount1Type === 'percent' ? parsedD1Val : 0,
+      discount2Type,
+      discount2Value: parsedD2Val,
+      netCostAfterDiscounts: formulaCalc.netCostAfterDiscounts,
+      priceWithPpn: formulaCalc.costWithPpn,
+      marginType,
+      marginValue: parsedMarginVal,
+      marginAmount: formulaCalc.marginAmount,
+      sellingPrice: formulaCalc.sellingPrice,
+      pricePerSubUnit: formulaCalc.costPerSubUnit,
+      sellingPricePerSubUnit: formulaCalc.sellingPricePerSubUnit,
       unit: unit || activeProduct?.defaultUnit || 'Box',
       moq: parseInt(moq) || 1,
       leadTimeDays: parseInt(leadTimeDays) || 0,
@@ -249,11 +305,9 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
     onClose();
   };
 
-  // Comparison feedback for user
-  const finalEffectivePrice = parsedPrice > 0 ? parsedPrice : pharmaCalc.hargaJadiBox;
+  // Price comparison feedback
   let priceComparisonBadge = null;
-  if (competitorStats && competitorStats.quoteCount > 0 && finalEffectivePrice > 0) {
-    // If editing existing quote, check against min price of OTHER quotes
+  if (competitorStats && competitorStats.quoteCount > 0 && finalEffectiveNetPrice > 0) {
     const otherQuotes = quoteToEdit 
       ? (activeProduct?.quotes || []).filter(q => q.id !== quoteToEdit.id)
       : (activeProduct?.quotes || []);
@@ -262,35 +316,35 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
       const otherMinPrice = Math.min(...otherQuotes.map(q => q.price));
       const otherCheapestQuote = otherQuotes.find(q => q.price === otherMinPrice);
 
-      if (finalEffectivePrice < otherMinPrice) {
-        const diff = otherMinPrice - finalEffectivePrice;
+      if (finalEffectiveNetPrice < otherMinPrice) {
+        const diff = otherMinPrice - finalEffectiveNetPrice;
         priceComparisonBadge = (
-          <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-2 flex items-center justify-between text-xs text-emerald-900">
-            <span className="font-bold flex items-center gap-1">
+          <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-2.5 flex items-center justify-between text-xs text-emerald-900">
+            <span className="font-bold flex items-center gap-1.5">
               <Award className="w-4 h-4 text-emerald-600" />
-              Bakal Jadi Harga Termurah!
+              Bakal Jadi Penawaran Termurah!
             </span>
-            <span className="font-semibold text-emerald-700">
-              Lebih hemat {formatRupiah(diff)} dari {otherCheapestQuote?.supplierName}
+            <span className="font-bold text-emerald-700 font-mono">
+              Hemat {formatRupiah(diff)} dari {otherCheapestQuote?.supplierName}
             </span>
           </div>
         );
-      } else if (finalEffectivePrice > otherMinPrice) {
-        const diff = finalEffectivePrice - otherMinPrice;
+      } else if (finalEffectiveNetPrice > otherMinPrice) {
+        const diff = finalEffectiveNetPrice - otherMinPrice;
         priceComparisonBadge = (
-          <div className="bg-amber-50 border border-amber-300 rounded-lg p-2 flex items-center justify-between text-xs text-amber-900">
-            <span className="font-medium flex items-center gap-1">
+          <div className="bg-amber-50 border border-amber-300 rounded-lg p-2.5 flex items-center justify-between text-xs text-amber-900">
+            <span className="font-medium flex items-center gap-1.5">
               <AlertCircle className="w-4 h-4 text-amber-600" />
               Lebih tinggi +{formatRupiah(diff)}
             </span>
             <span className="text-[11px] text-amber-800">
-              Termurah saat ini: {formatRupiah(otherMinPrice)} ({otherCheapestQuote?.supplierName})
+              Termurah: {formatRupiah(otherMinPrice)} ({otherCheapestQuote?.supplierName})
             </span>
           </div>
         );
       } else {
         priceComparisonBadge = (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-900 flex items-center gap-1">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-xs text-blue-900 flex items-center gap-1.5">
             <CheckCircle2 className="w-4 h-4 text-blue-600" />
             <span>Sama dengan penawaran termurah saat ini ({formatRupiah(otherMinPrice)})</span>
           </div>
@@ -302,27 +356,32 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
       <div 
-        className="bg-white rounded-t-2xl sm:rounded-2xl border border-slate-200 shadow-2xl w-full sm:max-w-xl max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-200"
+        className="bg-white rounded-t-2xl sm:rounded-2xl border border-slate-200 shadow-2xl w-full sm:max-w-2xl max-h-[94vh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 bg-slate-50/90 flex items-center justify-between shrink-0">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 bg-gradient-to-r from-emerald-800 via-teal-800 to-slate-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
-              <DollarSign className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-white/10 text-emerald-300 flex items-center justify-center shadow-xs">
+              <Calculator className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-sm sm:text-base text-slate-900 leading-tight">
-                {quoteToEdit ? 'Edit Penawaran Harga' : 'Tambah Penawaran Supplier'}
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                {quoteToEdit ? `Mengubah harga dari ${quoteToEdit.supplierName}` : 'Bandingkan penawaran harga antar supplier'}
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm sm:text-base leading-tight">
+                  {quoteToEdit ? 'Edit Penawaran Harga Supplier' : 'Tambah Penawaran Supplier'}
+                </h3>
+                <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-400 text-slate-950 px-2 py-0.2 rounded-full">
+                  Rumus Margin
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-100 font-mono mt-0.5">
+                (Modal − Diskon 1 − Diskon 2 + PPN) + Margin
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-slate-700 active:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
             aria-label="Tutup modal"
           >
             <X className="w-5 h-5" />
@@ -395,7 +454,6 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
             {/* SEARCH DROPDOWN POPUP */}
             {isProductSelectorOpen && !quoteToEdit && (
               <div className="border border-emerald-300 rounded-xl bg-white shadow-xl p-2.5 space-y-2 z-20">
-                {/* Search input field */}
                 <div className="relative">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
@@ -417,7 +475,6 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
                   )}
                 </div>
 
-                {/* Filtered list */}
                 <div className="max-h-52 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200">
                   {filteredProducts.length === 0 ? (
                     <div className="p-4 text-center text-xs text-slate-500">
@@ -493,7 +550,7 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
               </datalist>
             </div>
 
-            {/* Quick Supplier Chips for Mobile */}
+            {/* Quick Supplier Chips */}
             {suppliers.length > 0 && (
               <div className="mt-1.5 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                 <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">
@@ -517,53 +574,409 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
             )}
           </div>
 
-          {/* 3. HIGH USABILITY PRICE EDITOR */}
-          <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3.5 sm:p-4 space-y-3.5">
+          {/* 3. METODE PERHITUNGAN: (Modal - Diskon 1 - Diskon 2 + PPN) + Margin */}
+          <div className="bg-gradient-to-br from-emerald-50/60 to-teal-50/40 border border-emerald-300/80 rounded-2xl p-3.5 sm:p-4 space-y-3.5">
             
-            {/* Mode Switcher: Harga Jadi Langsung VS Hitung HNA & Diskon */}
+            {/* Mode Selector */}
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                <Calculator className="w-4 h-4 text-amber-700" />
-                <span>Input & Edit Harga Penawaran</span>
+              <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Calculator className="w-4 h-4 text-emerald-700" />
+                <span>Metode Perhitungan Harga:</span>
               </div>
 
-              {/* Mode Tabs */}
-              <div className="flex items-center bg-white/90 border border-amber-200 rounded-lg p-0.5 text-xs font-semibold">
+              <div className="flex items-center bg-white border border-emerald-300 rounded-lg p-0.5 text-xs font-semibold shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setPriceInputMode('formula')}
+                  className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                    priceInputMode === 'formula'
+                      ? 'bg-emerald-700 text-white shadow-2xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Rumus: (Modal − D1 − D2 + PPN) + Margin
+                </button>
                 <button
                   type="button"
                   onClick={() => setPriceInputMode('direct')}
-                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                  className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
                     priceInputMode === 'direct'
-                      ? 'bg-emerald-600 text-white shadow-2xs font-bold'
+                      ? 'bg-emerald-700 text-white shadow-2xs font-bold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   Harga Jadi Langsung
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setPriceInputMode('hna_discount')}
-                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                    priceInputMode === 'hna_discount'
-                      ? 'bg-emerald-600 text-white shadow-2xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  HNA & Diskon %
-                </button>
               </div>
             </div>
 
-            {/* TAB 1: HARGA JADI LANGSUNG (Paling Sering & Praktis) */}
-            {priceInputMode === 'direct' ? (
-              <div className="space-y-3 bg-white p-3.5 rounded-xl border border-amber-200/80 shadow-2xs">
+            {/* TAB 1: FORMULA MODE */}
+            {priceInputMode === 'formula' ? (
+              <div className="space-y-4 bg-white p-3.5 sm:p-4 rounded-xl border border-emerald-200/90 shadow-2xs">
+                
+                {/* 1. Modal Pokok / HNA */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <span>1. Modal Dasar / HNA (per {unit || activeProduct?.defaultUnit || 'Box'})</span>
+                      <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-xs font-bold text-emerald-700 font-mono">
+                      {parsedModal > 0 ? formatRupiah(parsedModal) : ''}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                      Rp
+                    </span>
+                    <input
+                      type="number"
+                      required
+                      inputMode="numeric"
+                      min="1"
+                      step="100"
+                      placeholder="Contoh: 100000"
+                      value={modalCost}
+                      onChange={(e) => setModalCost(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 text-base sm:text-lg font-bold text-slate-900 border-2 border-slate-300 focus:border-emerald-600 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Diskon 1 & Diskon 2 Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                  
+                  {/* Diskon 1 */}
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800">
+                        2. Diskon 1 (Reguler)
+                      </label>
+                      
+                      {/* Toggle % or Rp */}
+                      <div className="inline-flex bg-white rounded-md p-0.5 border border-slate-300 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => setDiscount1Type('percent')}
+                          className={`px-2 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                            discount1Type === 'percent' ? 'bg-emerald-600 text-white' : 'text-slate-600'
+                          }`}
+                        >
+                          %
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDiscount1Type('amount')}
+                          className={`px-2 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                            discount1Type === 'amount' ? 'bg-emerald-600 text-white' : 'text-slate-600'
+                          }`}
+                        >
+                          Rp
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      {discount1Type === 'amount' && (
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                          Rp
+                        </span>
+                      )}
+                      <input
+                        type="number"
+                        step={discount1Type === 'percent' ? '0.1' : '500'}
+                        min="0"
+                        placeholder="0"
+                        value={discount1Value}
+                        onChange={(e) => setDiscount1Value(e.target.value)}
+                        className={`w-full py-1.5 text-sm font-bold border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                          discount1Type === 'amount' ? 'pl-8 pr-3' : 'pl-3 pr-8'
+                        }`}
+                      />
+                      {discount1Type === 'percent' && (
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                          %
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Presets D1 */}
+                    <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                      {discount1Type === 'percent'
+                        ? [0, 5, 10, 15, 20].map((pct) => (
+                            <button
+                              key={pct}
+                              type="button"
+                              onClick={() => applyQuickD1(pct, 'percent')}
+                              className={`text-[10px] px-2 py-0.5 rounded cursor-pointer ${
+                                parsedD1Val === pct ? 'bg-emerald-600 text-white font-bold' : 'bg-white border border-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {pct}%
+                            </button>
+                          ))
+                        : [1000, 2500, 5000, 10000].map((amt) => (
+                            <button
+                              key={amt}
+                              type="button"
+                              onClick={() => applyQuickD1(amt, 'amount')}
+                              className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer ${
+                                parsedD1Val === amt ? 'bg-emerald-600 text-white font-bold' : 'bg-white border border-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {formatRupiah(amt)}
+                            </button>
+                          ))}
+                    </div>
+
+                    {formulaCalc.discount1Amount > 0 && (
+                      <div className="text-[11px] text-emerald-800 font-semibold text-right">
+                        Potongan: −{formatRupiah(formulaCalc.discount1Amount)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Diskon 2 */}
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800">
+                        3. Diskon 2 (Tambahan / Cash)
+                      </label>
+                      
+                      {/* Toggle % or Rp */}
+                      <div className="inline-flex bg-white rounded-md p-0.5 border border-slate-300 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => setDiscount2Type('percent')}
+                          className={`px-2 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                            discount2Type === 'percent' ? 'bg-emerald-600 text-white' : 'text-slate-600'
+                          }`}
+                        >
+                          %
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDiscount2Type('amount')}
+                          className={`px-2 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                            discount2Type === 'amount' ? 'bg-emerald-600 text-white' : 'text-slate-600'
+                          }`}
+                        >
+                          Rp
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      {discount2Type === 'amount' && (
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                          Rp
+                        </span>
+                      )}
+                      <input
+                        type="number"
+                        step={discount2Type === 'percent' ? '0.1' : '500'}
+                        min="0"
+                        placeholder="0"
+                        value={discount2Value}
+                        onChange={(e) => setDiscount2Value(e.target.value)}
+                        className={`w-full py-1.5 text-sm font-bold border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                          discount2Type === 'amount' ? 'pl-8 pr-3' : 'pl-3 pr-8'
+                        }`}
+                      />
+                      {discount2Type === 'percent' && (
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                          %
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Presets D2 */}
+                    <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                      {discount2Type === 'percent'
+                        ? [0, 1.5, 2, 2.5, 5].map((pct) => (
+                            <button
+                              key={pct}
+                              type="button"
+                              onClick={() => applyQuickD2(pct, 'percent')}
+                              className={`text-[10px] px-2 py-0.5 rounded cursor-pointer ${
+                                parsedD2Val === pct ? 'bg-emerald-600 text-white font-bold' : 'bg-white border border-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {pct}%
+                            </button>
+                          ))
+                        : [1000, 2000, 3000, 5000].map((amt) => (
+                            <button
+                              key={amt}
+                              type="button"
+                              onClick={() => applyQuickD2(amt, 'amount')}
+                              className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer ${
+                                parsedD2Val === amt ? 'bg-emerald-600 text-white font-bold' : 'bg-white border border-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {formatRupiah(amt)}
+                            </button>
+                          ))}
+                    </div>
+
+                    {formulaCalc.discount2Amount > 0 && (
+                      <div className="text-[11px] text-emerald-800 font-semibold text-right">
+                        Potongan: −{formatRupiah(formulaCalc.discount2Amount)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. PPN & Margin Keuntungan Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1 border-t border-slate-200">
+                  
+                  {/* PPN Toggle & Value */}
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Receipt className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>4. Pajak PPN</span>
+                      </label>
+
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={ppnEnabled}
+                          onChange={(e) => setPpnEnabled(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+                        <span className="ml-1.5 text-[11px] font-bold text-slate-700">
+                          {ppnEnabled ? 'Aktif' : '0%'}
+                        </span>
+                      </label>
+                    </div>
+
+                    {ppnEnabled ? (
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="100"
+                            value={ppnPercent}
+                            onChange={(e) => setPpnPercent(parseFloat(e.target.value) || 0)}
+                            className="w-full py-1.5 pl-3 pr-8 text-sm font-bold border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                            %
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-mono text-amber-700 font-bold">
+                          +{formatRupiah(formulaCalc.ppnAmount)}
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-500 italic py-1">
+                        Bebas PPN (Non-Faktur Pajak)
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Margin Apotek (% / Rp) */}
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>5. Margin Keuntungan</span>
+                      </label>
+
+                      {/* Toggle % or Rp */}
+                      <div className="inline-flex bg-white rounded-md p-0.5 border border-slate-300 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => setMarginType('percent')}
+                          className={`px-2 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                            marginType === 'percent' ? 'bg-emerald-600 text-white' : 'text-slate-600'
+                          }`}
+                        >
+                          %
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMarginType('amount')}
+                          className={`px-2 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                            marginType === 'amount' ? 'bg-emerald-600 text-white' : 'text-slate-600'
+                          }`}
+                        >
+                          Rp
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      {marginType === 'amount' && (
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                          Rp
+                        </span>
+                      )}
+                      <input
+                        type="number"
+                        step={marginType === 'percent' ? '0.5' : '1000'}
+                        min="0"
+                        placeholder="25"
+                        value={marginValue}
+                        onChange={(e) => setMarginValue(e.target.value)}
+                        className={`w-full py-1.5 text-sm font-bold border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                          marginType === 'amount' ? 'pl-8 pr-3' : 'pl-3 pr-8'
+                        }`}
+                      />
+                      {marginType === 'percent' && (
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                          %
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Presets Margin */}
+                    <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                      {marginType === 'percent'
+                        ? [15, 20, 25, 30].map((pct) => (
+                            <button
+                              key={pct}
+                              type="button"
+                              onClick={() => applyQuickMargin(pct, 'percent')}
+                              className={`text-[10px] px-2 py-0.5 rounded cursor-pointer ${
+                                parsedMarginVal === pct ? 'bg-emerald-600 text-white font-bold' : 'bg-white border border-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {pct}%
+                            </button>
+                          ))
+                        : [5000, 10000, 15000, 20000].map((amt) => (
+                            <button
+                              key={amt}
+                              type="button"
+                              onClick={() => applyQuickMargin(amt, 'amount')}
+                              className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer ${
+                                parsedMarginVal === amt ? 'bg-emerald-600 text-white font-bold' : 'bg-white border border-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {formatRupiah(amt)}
+                            </button>
+                          ))}
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+            ) : (
+              /* TAB 2: DIRECT PRICE MODE */
+              <div className="space-y-3 bg-white p-3.5 sm:p-4 rounded-xl border border-emerald-200/90 shadow-2xs">
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-bold text-slate-900">
-                      HARGA JADI (per {unit || activeProduct?.defaultUnit || 'Box'}) <span className="text-rose-500">*</span>
+                      Harga Jadi Beli Langsung (per {unit || activeProduct?.defaultUnit || 'Box'}) <span className="text-rose-500">*</span>
                     </label>
-                    <span className="text-[11px] text-emerald-700 font-bold">
-                      {parsedPrice > 0 ? formatRupiah(parsedPrice) : ''}
+                    <span className="text-xs font-bold text-emerald-700 font-mono">
+                      {parsedDirect > 0 ? formatRupiah(parsedDirect) : ''}
                     </span>
                   </div>
 
@@ -577,189 +990,89 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
                       inputMode="numeric"
                       min="1"
                       step="100"
-                      placeholder="9500"
-                      value={price}
-                      onChange={(e) => handleDirectPriceChange(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 text-lg sm:text-xl font-extrabold text-slate-900 border-2 border-emerald-500 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                      placeholder="Contoh: 9500"
+                      value={directPrice}
+                      onChange={(e) => setDirectPrice(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 text-base sm:text-lg font-bold text-slate-900 border-2 border-emerald-500 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                     />
                   </div>
-                </div>
-
-                {/* Quick Step Adjustment Buttons for Mobile */}
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Pintasan Tambah / Kurang Cepat:
-                  </p>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => adjustPriceBy(1000)}
-                      className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-lg cursor-pointer transition-colors"
-                    >
-                      +1.000
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => adjustPriceBy(5000)}
-                      className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-lg cursor-pointer transition-colors"
-                    >
-                      +5.000
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => adjustPriceBy(10000)}
-                      className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-lg cursor-pointer transition-colors"
-                    >
-                      +10.000
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => adjustPriceBy(-1000)}
-                      className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-lg cursor-pointer transition-colors"
-                    >
-                      -1.000
-                    </button>
-                    <button
-                      type="button"
-                      onClick={roundPriceToHundred}
-                      className="px-2.5 py-1 text-xs font-semibold bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg cursor-pointer transition-colors"
-                    >
-                      Bulatkan
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* TAB 2: HITUNG DARI HNA & DISKON % (Formula Farmasi) */
-              <div className="space-y-3 bg-white p-3.5 rounded-xl border border-amber-200/80 shadow-2xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* HNA */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-bold text-slate-800">
-                        HNA (Harga Netto Apotek)
-                      </label>
-                      <span className="text-[10px] text-slate-500 font-mono">
-                        {parsedHna > 0 ? formatRupiah(parsedHna) : ''}
-                      </span>
-                    </div>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                        Rp
-                      </span>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min="0"
-                        step="100"
-                        placeholder="11000"
-                        value={hna}
-                        onChange={(e) => handleHnaChange(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 text-sm font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Diskon % */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-bold text-slate-800">
-                        Diskon Supplier (%)
-                      </label>
-                      <span className="text-[10px] text-emerald-700 font-bold">
-                        {parsedDisk > 0 ? `-${parsedDisk}%` : ''}
-                      </span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        placeholder="13.64"
-                        value={discountPercent}
-                        onChange={(e) => handleDiscountChange(e.target.value)}
-                        className="w-full pl-3 pr-8 py-2 text-sm font-extrabold text-emerald-700 border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                        %
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quick Discount Presets */}
-                <div className="space-y-1">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Pilihan Diskon Populer:
-                  </p>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {[0, 5, 10, 13.64, 15, 20, 25, 30].map((pct) => (
-                      <button
-                        key={pct}
-                        type="button"
-                        onClick={() => applyQuickDiscount(pct)}
-                        className={`px-2 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
-                          Math.abs(parsedDisk - pct) < 0.01
-                            ? 'bg-emerald-600 text-white font-bold'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                        }`}
-                      >
-                        {pct}%
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Calculated Result Box */}
-                <div className="pt-2 border-t border-slate-150 flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700">Hasil Harga Jadi:</span>
-                  <span className="text-base font-extrabold text-emerald-700">
-                    {formatRupiah(pharmaCalc.hargaJadiBox)}
-                  </span>
                 </div>
               </div>
             )}
 
-            {/* LIVE AUTOMATIC CALCULATION BREAKDOWN */}
-            <div className="bg-white border border-amber-200/90 rounded-xl p-3 space-y-2">
-              <div className="flex items-center justify-between text-[11px] text-slate-500">
-                <span className="font-semibold text-slate-700">Rincian Kalkulasi Farmasi:</span>
-                <span>{activeProduct?.packContent || `1 Box = ${subCount} ${subName}`}</span>
+            {/* LIVE DYNAMIC BREAKDOWN CARD (THE RUMUS VIEW) */}
+            <div className="bg-slate-900 text-white rounded-xl p-3.5 sm:p-4 shadow-inner space-y-3 border border-emerald-500/30">
+              <div className="flex items-center justify-between text-xs pb-2 border-b border-white/10">
+                <span className="font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Calculator className="w-3.5 h-3.5 text-emerald-400" />
+                  Rincian Hasil Rumus Margin
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  {activeProduct?.packContent || `1 Box = ${subCount} ${subName}`}
+                </span>
               </div>
 
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 text-center">
-                <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
-                  <span className="block text-[9px] uppercase font-bold text-slate-400">Harga Jadi Box</span>
-                  <span className="font-extrabold text-xs sm:text-sm text-slate-900">
-                    {formatRupiah(finalEffectivePrice)}
+              {/* Step By Step Badges */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                {/* 1. Modal Bersih */}
+                <div className="bg-white/10 p-2 rounded-lg border border-white/10">
+                  <span className="block text-[9px] uppercase font-bold text-slate-300">
+                    Modal Bersih (Net)
+                  </span>
+                  <span className="font-bold text-xs sm:text-sm text-white font-mono">
+                    {formatRupiah(formulaCalc.netCostAfterDiscounts)}
+                  </span>
+                  <span className="block text-[10px] text-slate-400">
+                    ~{formatRupiah(formulaCalc.costPerSubUnit)}/{subName}
                   </span>
                 </div>
 
-                <div className="bg-blue-50 p-2 rounded-lg border border-blue-200">
-                  <span className="block text-[9px] uppercase font-bold text-blue-700">Per {subName}</span>
-                  <span className="font-extrabold text-xs sm:text-sm text-blue-900">
-                    {formatRupiah(Math.round(finalEffectivePrice / subCount))}
+                {/* 2. Total Diskon */}
+                <div className="bg-emerald-950/70 p-2 rounded-lg border border-emerald-500/30">
+                  <span className="block text-[9px] uppercase font-bold text-emerald-300">
+                    Total Diskon (D1+D2)
+                  </span>
+                  <span className="font-bold text-xs sm:text-sm text-emerald-400 font-mono">
+                    −{formatRupiah(formulaCalc.totalDiscountAmount)}
+                  </span>
+                  <span className="block text-[10px] text-emerald-300/80">
+                    {formulaCalc.modal > 0 ? `${((formulaCalc.totalDiscountAmount / formulaCalc.modal) * 100).toFixed(1)}%` : '0%'}
                   </span>
                 </div>
 
-                <div className="bg-purple-50 p-2 rounded-lg border border-purple-200">
-                  <span className="block text-[9px] uppercase font-bold text-purple-700">+ PPN 11%</span>
-                  <span className="font-extrabold text-xs sm:text-sm text-purple-950">
-                    {formatRupiah(Math.round(finalEffectivePrice * 1.11))}
+                {/* 3. Modal + PPN */}
+                <div className="bg-purple-950/70 p-2 rounded-lg border border-purple-500/30">
+                  <span className="block text-[9px] uppercase font-bold text-purple-300">
+                    Modal + PPN
+                  </span>
+                  <span className="font-bold text-xs sm:text-sm text-purple-200 font-mono">
+                    {formatRupiah(formulaCalc.costWithPpn)}
+                  </span>
+                  <span className="block text-[10px] text-purple-300/80">
+                    +PPN {formulaCalc.ppnPercent}%
                   </span>
                 </div>
 
-                <div className="hidden sm:block bg-amber-50 p-2 rounded-lg border border-amber-200">
-                  <span className="block text-[9px] uppercase font-bold text-amber-700">Diskon</span>
-                  <span className="font-extrabold text-xs sm:text-sm text-amber-900">
-                    {parsedDisk > 0 ? `${parsedDisk}%` : '0%'}
+                {/* 4. Rekomendasi Jual */}
+                <div className="bg-amber-950/70 p-2 rounded-lg border border-amber-500/30">
+                  <span className="block text-[9px] uppercase font-bold text-amber-300">
+                    Harga Jual Rekomendasi
+                  </span>
+                  <span className="font-black text-xs sm:text-sm text-amber-300 font-mono">
+                    {formatRupiah(formulaCalc.sellingPrice)}
+                  </span>
+                  <span className="block text-[10px] text-amber-200/90 font-bold">
+                    ~{formatRupiah(formulaCalc.sellingPricePerSubUnit)}/{subName}
                   </span>
                 </div>
               </div>
 
-              {/* Instant Comparison Feedback */}
+              {/* Equation banner */}
+              <div className="p-2.5 bg-black/40 rounded-lg border border-white/10 text-[11px] font-mono text-emerald-300/90 overflow-x-auto whitespace-nowrap">
+                {formulaCalc.formulaString}
+              </div>
+
+              {/* Comparison Feedback */}
               {priceComparisonBadge}
             </div>
 
@@ -815,7 +1128,6 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
 
           {/* 5. STATUS STOK & CATATAN */}
           <div className="space-y-3 pt-1">
-            {/* Stock checkbox toggle */}
             <label className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
               <input
                 type="checkbox"
@@ -834,7 +1146,6 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
               </div>
             </label>
 
-            {/* Notes */}
             <div>
               <label className="block text-xs font-bold text-slate-800 mb-1">
                 Catatan Penawaran / Ketentuan Pembayaran (TOP)
@@ -849,7 +1160,7 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
             </div>
           </div>
 
-          {/* Modal Footer - Sticky & High Touch */}
+          {/* Modal Footer */}
           <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
             <button
               type="button"
@@ -860,7 +1171,7 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={finalEffectivePrice <= 0 || !supplierName.trim()}
+              disabled={finalEffectiveNetPrice <= 0 || !supplierName.trim()}
               className="flex-1 sm:flex-initial px-5 py-2.5 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-xl shadow-md shadow-emerald-200 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
             >
               {quoteToEdit ? 'Simpan Perubahan Harga' : 'Simpan Penawaran'}

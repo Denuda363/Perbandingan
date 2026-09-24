@@ -1,13 +1,35 @@
+export type DiscountType = 'percent' | 'amount';
+export type MarginType = 'percent' | 'amount';
+
 export interface SupplierQuote {
   id: string;
   supplierId: string;
   supplierName: string;
-  price: number; // HARGA JADI (box/unit utama)
+  price: number; // HARGA JADI (box/unit utama setelah diskon, modal bersih sebelum PPN)
   unit: string; // e.g. "Box"
-  hna?: number; // Harga Netto Apotek (sebelum diskon & PPN)
-  discountPercent?: number; // Diskon % dari supplier (contoh: 10%)
-  pricePerSubUnit?: number; // HARGA JADI per lembar / strip (price / subUnitCount)
-  priceWithPpn?: number; // HARGA JADI + PPN 11%
+  hna?: number; // Modal Dasar / Harga Netto Apotek (sebelum diskon & PPN)
+  
+  // Diskon 1 (bisa % atau Rp)
+  discount1Type?: DiscountType; // 'percent' | 'amount'
+  discount1Value?: number; // e.g. 10 (%) atau 5000 (Rp)
+  discountPercent?: number; // legacy backward compatibility
+  
+  // Diskon 2 (bisa % atau Rp)
+  discount2Type?: DiscountType; // 'percent' | 'amount'
+  discount2Value?: number; // e.g. 2.5 (%) atau 2000 (Rp)
+  
+  // Rincian hasil rumus: (Modal - diskon 1 - diskon 2 + ppn) + margin
+  netCostAfterDiscounts?: number; // Modal - D1 - D2
+  priceWithPpn?: number; // (Modal - diskon 1 - diskon 2 + ppn)
+  
+  // Margin apotek
+  marginType?: MarginType; // 'percent' | 'amount'
+  marginValue?: number; // e.g. 25 (%) atau 15000 (Rp)
+  marginAmount?: number; // Nilai nominal margin
+  sellingPrice?: number; // ((Modal - diskon 1 - diskon 2 + ppn) + margin)
+  
+  pricePerSubUnit?: number; // Modal per lembar / strip
+  sellingPricePerSubUnit?: number; // Harga jual per lembar / strip
   moq?: number; // Minimum Order Quantity
   leadTimeDays?: number; // Estimasi pengiriman dalam hari
   lastUpdated: string; // YYYY-MM-DD
@@ -61,7 +83,13 @@ export interface AppSettings {
   ppnPercent: number; // Persentase PPN (misal: 11 atau 12 atau 0)
   ppnEnabled: boolean; // Aktifkan kalkulasi PPN
   marginPercent: number; // Persentase Margin Keuntungan (misal: 25%)
-  marginCalculationMode: 'on_cost_plus_ppn' | 'markup'; // Cara hitung: modal + PPN + margin atau modal + margin
+  marginType: MarginType; // Tipe margin: 'percent' (%) atau 'amount' (Rp)
+  marginAmountValue: number; // Nilai margin jika tipe 'amount' (misal: Rp 15.000)
+  defaultDiscount1Type: DiscountType; // 'percent' atau 'amount'
+  defaultDiscount1Value: number; // Nilai diskon 1 bawaan
+  defaultDiscount2Type: DiscountType; // 'percent' atau 'amount'
+  defaultDiscount2Value: number; // Nilai diskon 2 bawaan
+  marginCalculationMode: 'on_cost_plus_ppn' | 'markup'; // Cara hitung: (Modal - diskon 1 - diskon 2 + ppn) + margin
   roundingOption: 'none' | 'hundred' | 'thousand'; // Pembulatan kasir
 }
 
@@ -69,6 +97,12 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   ppnPercent: 11,
   ppnEnabled: true,
   marginPercent: 25,
+  marginType: 'percent',
+  marginAmountValue: 15000,
+  defaultDiscount1Type: 'percent',
+  defaultDiscount1Value: 0,
+  defaultDiscount2Type: 'percent',
+  defaultDiscount2Value: 0,
   marginCalculationMode: 'on_cost_plus_ppn',
   roundingOption: 'none',
 };
