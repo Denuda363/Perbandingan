@@ -25,7 +25,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { Product, Supplier, SupplierQuote, AppSettings, DEFAULT_APP_SETTINGS, DiscountType, MarginType } from '../types';
-import { calculateMarginFormula, formatRupiah, getProductPriceStats } from '../utils/formatters';
+import { calculateMarginFormula, formatRupiah, getProductPriceStats, parseCurrencyInput } from '../utils/formatters';
 
 interface AddQuoteModalProps {
   isOpen: boolean;
@@ -174,11 +174,11 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
   }, [selectedProduct, quoteToEdit, isOpen, products, suppliers, settings]);
 
   // Pricing calculations using the user's formula: (Modal - diskon 1 - diskon 2 + ppn) + margin
-  const parsedModal = parseFloat(modalCost) || 0;
+  const parsedModal = parseCurrencyInput(modalCost);
   const parsedD1Val = parseFloat(discount1Value) || 0;
   const parsedD2Val = parseFloat(discount2Value) || 0;
   const parsedMarginVal = parseFloat(marginValue) || 0;
-  const parsedDirect = parseFloat(directPrice) || 0;
+  const parsedDirect = parseCurrencyInput(directPrice);
 
   const formulaCalc = useMemo(() => {
     const effectiveBaseModal = priceInputMode === 'formula' ? parsedModal : parsedDirect;
@@ -216,7 +216,7 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
 
   // Effective net purchase cost per box
   const finalEffectiveNetPrice = priceInputMode === 'formula'
-    ? (parsedModal > 0 ? formulaCalc.netCostAfterDiscounts : 0)
+    ? (parsedModal >= 0 ? formulaCalc.netCostAfterDiscounts : 0)
     : parsedDirect;
 
   // Filter products for search selector
@@ -268,7 +268,14 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!productId || !supplierName.trim() || finalEffectiveNetPrice <= 0) return;
+    if (!productId || !supplierName.trim()) return;
+
+    // Nilai modal dasar yang dicantumkan langsung dipakai
+    const effectivePrice = priceInputMode === 'formula'
+      ? (parsedModal >= 0 ? formulaCalc.netCostAfterDiscounts : 0)
+      : parsedDirect;
+
+    if (effectivePrice <= 0 && parsedModal <= 0 && parsedDirect <= 0) return;
 
     const matchedSupplier = suppliers.find(
       (s) => s.name.toLowerCase() === supplierName.trim().toLowerCase()
@@ -278,8 +285,8 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
       id: quoteToEdit ? quoteToEdit.id : `q-${Date.now()}`,
       supplierId: matchedSupplier ? matchedSupplier.id : `sup-${Date.now()}`,
       supplierName: supplierName.trim(),
-      price: finalEffectiveNetPrice, // Modal bersih setelah diskon
-      hna: parsedModal > 0 ? parsedModal : finalEffectiveNetPrice,
+      price: effectivePrice > 0 ? effectivePrice : (parsedModal > 0 ? parsedModal : parsedDirect), // Modal bersih setelah diskon
+      hna: parsedModal > 0 ? parsedModal : (effectivePrice > 0 ? effectivePrice : parsedDirect),
       discount1Type,
       discount1Value: parsedD1Val,
       discountPercent: discount1Type === 'percent' ? parsedD1Val : 0,
@@ -389,7 +396,7 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
+        <form onSubmit={handleSubmit} noValidate className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
           
           {/* 1. SEARCHABLE PRODUCT SELECTOR */}
           <div className="space-y-1.5 relative">
@@ -630,16 +637,32 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
                       Rp
                     </span>
                     <input
-                      type="number"
-                      required
+                      type="text"
                       inputMode="numeric"
-                      min="1"
-                      step="100"
-                      placeholder="Contoh: 100000"
+                      placeholder="Masukkan modal dasar (contoh: 100000 atau 100.000)"
                       value={modalCost}
                       onChange={(e) => setModalCost(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 text-base sm:text-lg font-bold text-slate-900 border-2 border-slate-300 focus:border-emerald-600 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      className="w-full pl-10 pr-4 py-2.5 text-base sm:text-lg font-bold text-slate-900 border-2 border-slate-300 focus:border-emerald-600 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono"
                     />
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Nilai yang dicantumkan langsung dipakai sebagai modal dasar perhitungan tanpa batasan validasi.
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                    {[10000, 25000, 50000, 100000, 250000, 500000].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setModalCost(preset.toString())}
+                        className={`text-[10px] px-2 py-0.5 rounded-md border cursor-pointer transition-colors ${
+                          parsedModal === preset
+                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {formatRupiah(preset)}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -985,15 +1008,12 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
                       Rp
                     </span>
                     <input
-                      type="number"
-                      required
+                      type="text"
                       inputMode="numeric"
-                      min="1"
-                      step="100"
-                      placeholder="Contoh: 9500"
+                      placeholder="Contoh: 95000 atau 95.000"
                       value={directPrice}
                       onChange={(e) => setDirectPrice(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 text-base sm:text-lg font-bold text-slate-900 border-2 border-emerald-500 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                      className="w-full pl-10 pr-4 py-2.5 text-base sm:text-lg font-bold text-slate-900 border-2 border-emerald-500 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 font-mono"
                     />
                   </div>
                 </div>

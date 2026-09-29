@@ -15,6 +15,44 @@ export function formatNumber(value: number): string {
   return new Intl.NumberFormat('id-ID').format(value);
 }
 
+/**
+ * Mengonversi input harga/modal (baik berupa angka langsung, string angka,
+ * ataupun teks dengan pemisah ribuan seperti "100.000" atau "100,000")
+ * menjadi angka murni tanpa error validasi.
+ * Nilai yang dicantumkan langsung dipakai sebagai modal dasar.
+ */
+export function parseCurrencyInput(value: string | number | undefined | null): number {
+  if (value === undefined || value === null || value === '') return 0;
+  if (typeof value === 'number') return isNaN(value) ? 0 : value;
+  
+  const trimmed = value.toString().trim();
+  if (!trimmed) return 0;
+
+  // Hapus karakter selain digit, titik, koma, minus
+  let cleaned = trimmed.replace(/[^0-9.,-]/g, '');
+  if (!cleaned) return 0;
+
+  // Format ribuan Indonesia e.g. "150.000" atau "150.000,50"
+  if (cleaned.includes('.') && cleaned.includes(',')) {
+    cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+  } else if (cleaned.includes('.') && !cleaned.includes(',')) {
+    const parts = cleaned.split('.');
+    if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+      cleaned = cleaned.replace(/\./g, '');
+    }
+  } else if (cleaned.includes(',') && !cleaned.includes('.')) {
+    const parts = cleaned.split(',');
+    if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+      cleaned = cleaned.replace(/,/g, '');
+    } else {
+      cleaned = cleaned.replace(',', '.');
+    }
+  }
+
+  const result = parseFloat(cleaned);
+  return isNaN(result) ? 0 : result;
+}
+
 export interface MarginFormulaInput {
   modal: number; // Modal Dasar / HNA / Harga Pokok (Rupiah)
   discount1Value?: number; // Nilai Diskon 1 (bisa % atau Rp)

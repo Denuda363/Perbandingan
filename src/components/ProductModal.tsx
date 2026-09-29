@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Package, Plus, DollarSign, Building2, Layers, Calculator } from 'lucide-react';
 import { Product, Supplier } from '../types';
-import { calculatePharmaPricing, formatRupiah } from '../utils/formatters';
+import { calculatePharmaPricing, formatRupiah, parseCurrencyInput } from '../utils/formatters';
 
 interface ProductModalProps {
   isOpen: boolean;
@@ -99,9 +99,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   }, [productToEdit, isOpen, suppliers]);
 
   // Live calculation for initial quote
-  const parsedHna = parseFloat(quoteHna) || 0;
+  const parsedHna = parseCurrencyInput(quoteHna);
   const parsedDisk = parseFloat(quoteDiscount) || 0;
-  const parsedPrice = parseFloat(quotePrice) || 0;
+  const parsedPrice = parseCurrencyInput(quotePrice);
 
   const pharmaCalc = calculatePharmaPricing({
     hna: parsedHna,
@@ -113,7 +113,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
   const handleHnaChange = (val: string) => {
     setQuoteHna(val);
-    const numHna = parseFloat(val) || 0;
+    const numHna = parseCurrencyInput(val);
     const numDisk = parseFloat(quoteDiscount) || 0;
     if (numHna > 0) {
       const calc = Math.max(0, Math.round(numHna * (1 - numDisk / 100)));
@@ -124,7 +124,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const handleDiskChange = (val: string) => {
     setQuoteDiscount(val);
     const numDisk = parseFloat(val) || 0;
-    const numHna = parseFloat(quoteHna) || 0;
+    const numHna = parseCurrencyInput(quoteHna);
     if (numHna > 0) {
       const calc = Math.max(0, Math.round(numHna * (1 - numDisk / 100)));
       setQuotePrice(calc > 0 ? calc.toString() : '');
@@ -133,8 +133,8 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
   const handlePriceChange = (val: string) => {
     setQuotePrice(val);
-    const numPrice = parseFloat(val) || 0;
-    const numHna = parseFloat(quoteHna) || 0;
+    const numPrice = parseCurrencyInput(val);
+    const numHna = parseCurrencyInput(quoteHna);
     if (numHna > 0 && numPrice > 0 && numHna >= numPrice) {
       const calcDisk = parseFloat((((numHna - numPrice) / numHna) * 100).toFixed(2));
       setQuoteDiscount(calcDisk.toString());
@@ -212,7 +212,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         </div>
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} noValidate className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
           
           {/* Nama Produk */}
           <div>
@@ -431,10 +431,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                         HNA (Rp)
                       </label>
                       <input
-                        type="number"
-                        min="0"
-                        step="100"
-                        placeholder="11000"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Contoh: 11000 atau 11.000"
                         value={quoteHna}
                         onChange={(e) => handleHnaChange(e.target.value)}
                         className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
@@ -462,10 +461,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                         HARGA JADI (box)
                       </label>
                       <input
-                        type="number"
-                        min="0"
-                        step="100"
-                        placeholder="9500"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Contoh: 9500"
                         value={quotePrice}
                         onChange={(e) => handlePriceChange(e.target.value)}
                         className="w-full px-2 py-1.5 text-xs border-2 border-emerald-500 rounded-lg bg-white font-bold text-slate-900"

@@ -22,7 +22,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { Product, Supplier, AppSettings, DEFAULT_APP_SETTINGS, DiscountType, MarginType } from '../types';
-import { formatRupiah, getProductPriceStats, calculateSellingPrice, calculateMarginFormula } from '../utils/formatters';
+import { formatRupiah, getProductPriceStats, calculateSellingPrice, calculateMarginFormula, parseCurrencyInput } from '../utils/formatters';
 import { Pagination } from './Pagination';
 
 interface SimulationCalculatorProps {
@@ -51,11 +51,13 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
   }, [activeProduct]);
 
   // Pricing inputs for the formula mode
-  const [modalCost, setModalCost] = useState<number>(() => {
+  const [modalCost, setModalCost] = useState<string | number>(() => {
     const p = products[0];
     const s = p ? getProductPriceStats(p) : null;
     return s?.cheapestQuote?.hna || s?.cheapestQuote?.price || 100000;
   });
+
+  const parsedModal = parseCurrencyInput(modalCost);
 
   const [d1Type, setD1Type] = useState<DiscountType>('percent');
   const [d1Val, setD1Val] = useState<number>(10);
@@ -108,7 +110,7 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
   // Run the user's requested formula: (Modal - diskon 1 - diskon 2 + ppn) + margin
   const formulaResult = useMemo(() => {
     return calculateMarginFormula({
-      modal: modalCost,
+      modal: parsedModal,
       discount1Value: d1Val,
       discount1Type: d1Type,
       discount2Value: d2Val,
@@ -122,7 +124,7 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
       subUnitName: subName,
     });
   }, [
-    modalCost,
+    parsedModal,
     d1Val,
     d1Type,
     d2Val,
@@ -351,7 +353,7 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
                     1. Modal Pokok / HNA (per {activeProduct?.defaultUnit || 'Box'}):
                   </label>
                   <span className="text-xs font-mono font-bold text-slate-700">
-                    {formatRupiah(modalCost)}
+                    {formatRupiah(parsedModal)}
                   </span>
                 </div>
                 <div className="relative">
@@ -359,22 +361,25 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
                     Rp
                   </span>
                   <input
-                    type="number"
-                    step="1000"
-                    min="0"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Masukkan modal dasar (contoh: 100000 atau 100.000)"
                     value={modalCost}
-                    onChange={(e) => setModalCost(Math.max(0, parseInt(e.target.value) || 0))}
+                    onChange={(e) => setModalCost(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 text-base sm:text-lg font-black text-slate-900 border-2 border-slate-200 focus:border-emerald-500 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none transition-all font-mono"
                   />
                 </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Nilai yang dicantumkan langsung dipakai sebagai nilai dasar perhitungan tanpa batasan validasi.
+                </p>
                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                   {[10000, 25000, 50000, 100000, 250000, 500000].map((preset) => (
                     <button
                       key={preset}
                       type="button"
-                      onClick={() => setModalCost(preset)}
+                      onClick={() => setModalCost(preset.toString())}
                       className={`text-[11px] px-2 py-0.5 rounded-lg border cursor-pointer ${
-                        modalCost === preset
+                        parsedModal === preset
                           ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
                           : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                       }`}
