@@ -207,17 +207,35 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 {/* Modal Beli */}
                 <div className="flex items-baseline gap-2 mt-1 flex-wrap">
                   <span className="text-xs text-slate-500 font-semibold">Modal Beli:</span>
-                  <span className="text-base sm:text-lg font-bold text-slate-800">
-                    {formatRupiah(stats.cheapestQuote.price)}
-                  </span>
-                  <span className="text-xs text-slate-500">
-                    / {stats.cheapestQuote.unit || product.defaultUnit}
-                  </span>
-                  {isMulti && bestConversions.length > 1 && (
-                    <div className="inline-flex items-center gap-1.5 flex-wrap">
+                  {bestConversions.length <= 1 ? (
+                    // 1 Satuan: Tampilkan HANYA 1 harga modal sesuai satuannya
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-base sm:text-lg font-bold text-slate-800 font-mono">
+                        {formatRupiah(stats.cheapestQuote.price)}
+                      </span>
+                      <span className="text-xs text-slate-600 font-semibold font-sans">
+                        / {bestConversions[0]?.name || stats.cheapestQuote.unit || product.defaultUnit}
+                      </span>
+                    </div>
+                  ) : (
+                    // 2 Satuan / Multi-Satuan: Menampilkan 2 harga modal mengikuti satuan
+                    <div className="inline-flex items-center gap-2 flex-wrap">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-base sm:text-lg font-bold text-slate-800 font-mono">
+                          {formatRupiah(bestConversions[0].costPrice)}
+                        </span>
+                        <span className="text-xs text-slate-600 font-semibold font-sans">
+                          / {bestConversions[0].name}
+                        </span>
+                      </div>
+                      <span className="text-slate-300">•</span>
                       {bestConversions.slice(1).map((tier, tIdx) => (
-                        <span key={tIdx} className="text-[11px] text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                          ~{formatRupiah(tier.costPrice)} / {tier.name}
+                        <span
+                          key={tIdx}
+                          className="text-xs sm:text-sm font-bold text-blue-800 bg-blue-50/90 px-2 py-0.5 rounded-md border border-blue-200 font-mono inline-flex items-center gap-1"
+                        >
+                          <span>{formatRupiah(tier.costPrice)}</span>
+                          <span className="text-[11px] font-semibold text-slate-600 font-sans">/ {tier.name}</span>
                         </span>
                       ))}
                     </div>
@@ -247,18 +265,36 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                     Harga Jual ({settings.marginType === 'amount' ? `+${formatRupiah(settings.marginAmountValue)}` : `+${settings.marginPercent}%`} Margin):
                   </span>
                 </div>
-                <div className="flex items-baseline gap-1.5 mt-1 flex-wrap">
-                  <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono">
-                    {formatRupiah(cheapestSelling.sellingPrice)}
-                  </span>
-                  <span className="text-xs text-slate-600 font-medium">
-                    / {stats.cheapestQuote.unit || product.defaultUnit}
-                  </span>
-                  {isMulti && bestConversions.length > 1 && (
-                    <div className="inline-flex items-center gap-1.5 flex-wrap">
+                <div className="flex items-baseline gap-2 mt-1 flex-wrap">
+                  {bestConversions.length <= 1 ? (
+                    // 1 Satuan: Tampilkan HANYA 1 harga jual sesuai satuannya
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono">
+                        {formatRupiah(cheapestSelling.sellingPrice)}
+                      </span>
+                      <span className="text-xs text-slate-600 font-semibold font-sans">
+                        / {bestConversions[0]?.name || stats.cheapestQuote.unit || product.defaultUnit}
+                      </span>
+                    </div>
+                  ) : (
+                    // 2 Satuan / Multi-Satuan: Menampilkan 2 harga jual mengikuti satuan
+                    <div className="inline-flex items-center gap-2 flex-wrap">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono">
+                          {formatRupiah(bestConversions[0].sellingPrice)}
+                        </span>
+                        <span className="text-xs text-slate-600 font-semibold font-sans">
+                          / {bestConversions[0].name}
+                        </span>
+                      </div>
+                      <span className="text-slate-300">•</span>
                       {bestConversions.slice(1).map((tier, tIdx) => (
-                        <span key={tIdx} className="text-[11px] text-emerald-800 bg-emerald-100/90 font-bold px-1.5 py-0.5 rounded">
-                          ~{formatRupiah(tier.sellingPrice)} / {tier.name}
+                        <span
+                          key={tIdx}
+                          className="text-xs sm:text-sm font-black text-emerald-900 bg-emerald-100/90 px-2 py-0.5 rounded-md border border-emerald-300/80 font-mono inline-flex items-center gap-1"
+                        >
+                          <span>{formatRupiah(tier.sellingPrice)}</span>
+                          <span className="text-[11px] font-semibold text-emerald-950 font-sans">/ {tier.name}</span>
                         </span>
                       ))}
                     </div>
@@ -313,8 +349,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   ? Math.round((priceDiffFromCheapest / stats.minPrice) * 100) 
                   : 0;
 
-                const lembarPrice = quote.pricePerSubUnit || Math.round(quote.price / subCount);
                 const quoteSelling = calculateSellingPrice(quote.price, settings);
+                const quoteSellingPrice = quote.sellingPrice || quoteSelling.sellingPrice;
+                const quoteConversions = getProductUnitConversions(product, quote.price, quoteSellingPrice);
 
                 return (
                   <div
@@ -368,11 +405,22 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                           </div>
                         ) : null}
 
-                        {/* Price per sub-unit and +PPN */}
-                        <div className="flex items-center gap-2.5 text-[11px] mt-1.5 text-slate-600 flex-wrap">
-                          <span className="text-blue-700 font-semibold">
-                            {formatRupiah(lembarPrice)} / {subName}
-                          </span>
+                        {/* Satuan & PPN Info */}
+                        <div className="flex items-center gap-2 text-[11px] mt-1.5 text-slate-600 flex-wrap">
+                          {quoteConversions.length <= 1 ? (
+                            <span className="text-slate-600 font-medium">
+                              Satuan: <strong className="text-slate-900">{quoteConversions[0]?.name || quote.unit || product.defaultUnit}</strong>
+                            </span>
+                          ) : (
+                            <div className="inline-flex items-center gap-1.5 flex-wrap">
+                              <span className="text-slate-500 font-medium">Satuan:</span>
+                              {quoteConversions.map((tier, tIdx) => (
+                                <span key={tIdx} className="bg-slate-100 text-slate-700 font-semibold px-1.5 py-0.5 rounded text-[10px] border border-slate-200">
+                                  {tier.name} {tIdx > 0 ? `(@${tier.content})` : ''}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           <span className="text-slate-300">•</span>
                           {settings.ppnEnabled ? (
                             <span className="text-purple-700 font-medium">
@@ -409,10 +457,40 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
                       {/* Pricing column with difference */}
                       <div className="text-right shrink-0">
-                        <span className="text-[10px] text-slate-400 block font-semibold">MODAL BELI</span>
-                        <p className={`font-extrabold text-base ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
-                          {formatRupiah(quote.price)}
-                        </p>
+                        <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">
+                          Modal Beli
+                        </span>
+
+                        {quoteConversions.length <= 1 ? (
+                          // 1 Satuan: Tampilkan HANYA 1 harga modal dengan satuannya
+                          <div className="mt-0.5">
+                            <span className={`font-black text-base sm:text-lg font-mono ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
+                              {formatRupiah(quote.price)}
+                            </span>
+                            <span className="text-[11px] text-slate-500 font-semibold block">
+                              / {quoteConversions[0]?.name || quote.unit || product.defaultUnit}
+                            </span>
+                          </div>
+                        ) : (
+                          // 2 Satuan: Menampilkan 2 harga modal mengikuti satuannya
+                          <div className="mt-0.5 space-y-0.5 text-right">
+                            <div className="flex items-baseline justify-end gap-1">
+                              <span className={`font-black text-sm sm:text-base font-mono ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
+                                {formatRupiah(quoteConversions[0].costPrice)}
+                              </span>
+                              <span className="text-[11px] text-slate-600 font-semibold">
+                                / {quoteConversions[0].name}
+                              </span>
+                            </div>
+                            {quoteConversions.slice(1).map((tier, tIdx) => (
+                              <div key={tIdx} className="flex items-baseline justify-end gap-1 text-[11px] font-bold text-blue-700 font-mono">
+                                <span>{formatRupiah(tier.costPrice)}</span>
+                                <span className="text-slate-500 font-medium text-[10px] font-sans">/ {tier.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                         {!isCheapest && priceDiffFromCheapest > 0 && (
                           <span className="text-[10px] font-semibold text-rose-600 bg-rose-50 px-1 py-0.2 rounded inline-block mt-0.5">
                             +{formatRupiah(priceDiffFromCheapest)} ({pctFromCheapest > 0 ? `+${pctFromCheapest}%` : ''})
@@ -427,18 +505,44 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                     </div>
 
                     {/* Prominent Selling Price Row: (Modal - D1 - D2 + PPN) + Margin */}
-                    <div className="mt-2 pt-2 border-t border-slate-200/70 flex items-center justify-between flex-wrap gap-1.5 bg-emerald-50/50 -mx-3 -mb-3 px-3 py-2 rounded-b-xl">
+                    <div className="mt-2.5 pt-2 border-t border-slate-200/70 flex items-center justify-between flex-wrap gap-2 bg-emerald-50/50 -mx-3 -mb-3 px-3 py-2 rounded-b-xl">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-900 bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-1">
                           <TrendingUp className="w-3 h-3 text-emerald-700" />
                           Harga Jual ({settings.marginType === 'amount' ? `+${formatRupiah(settings.marginAmountValue)}` : `+${settings.marginPercent}%`}):
                         </span>
-                        <span className="text-xs font-black text-emerald-800 font-mono">
-                          {formatRupiah(quote.sellingPrice || quoteSelling.sellingPrice)}
-                        </span>
-                        <span className="text-[10px] text-slate-600 font-medium">
-                          (~{formatRupiah(quote.sellingPricePerSubUnit || Math.round((quote.sellingPrice || quoteSelling.sellingPrice) / subCount))}/{subName})
-                        </span>
+
+                        {quoteConversions.length <= 1 ? (
+                          // 1 Satuan: Tampilkan HANYA 1 harga jual mengikuti satuan
+                          <span className="text-xs font-black text-emerald-800 font-mono">
+                            {formatRupiah(quoteConversions[0]?.sellingPrice || quoteSelling.sellingPrice)}
+                            <span className="text-[11px] font-semibold text-slate-600 font-sans ml-1">
+                              / {quoteConversions[0]?.name || product.defaultUnit}
+                            </span>
+                          </span>
+                        ) : (
+                          // 2 Satuan: Menampilkan 2 harga jual mengikuti satuannya
+                          <div className="inline-flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-black text-emerald-800 font-mono">
+                              {formatRupiah(quoteConversions[0].sellingPrice)}
+                              <span className="text-[11px] font-semibold text-slate-600 font-sans ml-0.5">
+                                /{quoteConversions[0].name}
+                              </span>
+                            </span>
+                            <span className="text-emerald-300">•</span>
+                            {quoteConversions.slice(1).map((tier, tIdx) => (
+                              <span
+                                key={tIdx}
+                                className="text-xs font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300/80 px-1.5 py-0.5 rounded font-mono inline-flex items-center"
+                              >
+                                {formatRupiah(tier.sellingPrice)}
+                                <span className="text-[10px] font-semibold text-emerald-950 font-sans ml-0.5">
+                                  /{tier.name}
+                                </span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       <div className="text-[11px] text-emerald-800 font-semibold">

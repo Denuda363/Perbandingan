@@ -13,7 +13,15 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { Product, Supplier, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
-import { formatRupiah, getProductPriceStats, calculateSellingPrice } from '../utils/formatters';
+import { 
+  formatRupiah, 
+  getProductPriceStats, 
+  calculateSellingPrice,
+  normalizeProductUnits,
+  isProductMultiUnit,
+  getProductUnitConversions,
+  formatProductUnitSummary
+} from '../utils/formatters';
 import { Pagination } from './Pagination';
 
 interface MatrixViewProps {
@@ -163,8 +171,10 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
         ) : (
           paginatedProducts.map((product) => {
             const stats = getProductPriceStats(product);
-            const subCount = product.subUnitCount || 10;
-            const subName = product.subUnitName || 'lembar';
+            const productUnits = normalizeProductUnits(product);
+            const isMulti = isProductMultiUnit(product);
+            const subCount = isMulti && productUnits.length > 1 ? productUnits[1].totalRatio : 1;
+            const subName = isMulti && productUnits.length > 1 ? productUnits[1].name : (productUnits[0]?.name || 'Satuan');
 
             // Quotes sorted from cheapest to most expensive
             const sortedQuotes = [...product.quotes].sort((a, b) => a.price - b.price);
@@ -187,13 +197,13 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                       </p>
                     )}
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      {product.packaging || 'Kemasan standar'} • Isi: {product.packContent || `1 Box = ${subCount} ${subName}`}
+                      {product.packaging || 'Kemasan standar'} • {isMulti ? `Isi: ${product.packContent || formatProductUnitSummary(product)}` : `Satuan: ${product.defaultUnit} (Tunggal)`}
                     </p>
                   </div>
 
                   <button
                     onClick={() => onAddQuote(product)}
-                    className="p-2 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-xs font-semibold shrink-0"
+                    className="p-2 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-xs font-semibold shrink-0 cursor-pointer"
                     title="Tambah penawaran supplier"
                   >
                     <Plus className="w-4 h-4" />
@@ -218,7 +228,9 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                   {sortedQuotes.map((quote, idx) => {
                     const isCheapest = idx === 0 && sortedQuotes.length > 1;
                     const diff = quote.price - stats.minPrice;
-                    const lembarPrice = quote.pricePerSubUnit || Math.round(quote.price / subCount);
+                    const quoteSelling = calculateSellingPrice(quote.price, settings);
+                    const quoteSellingPrice = quote.sellingPrice || quoteSelling.sellingPrice;
+                    const quoteConversions = getProductUnitConversions(product, quote.price, quoteSellingPrice);
 
                     return (
                       <div
@@ -240,7 +252,13 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                           </div>
 
                           <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2">
-                            <span>~{formatRupiah(lembarPrice)}/{subName}</span>
+                            {quoteConversions.length <= 1 ? (
+                              <span className="font-medium text-slate-600">Satuan: {quoteConversions[0]?.name || quote.unit || product.defaultUnit}</span>
+                            ) : (
+                              <span className="font-medium text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-100">
+                                2 Satuan: {quoteConversions.slice(0, 2).map(u => u.name).join(' • ')}
+                              </span>
+                            )}
                             {quote.discountPercent ? (
                               <span className="text-emerald-700 font-bold">Diskon {quote.discountPercent}%</span>
                             ) : null}
@@ -249,14 +267,42 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
 
                         <div className="text-right shrink-0">
                           <span className="text-[10px] text-slate-400 block font-semibold">MODAL</span>
-                          <span className={`font-extrabold text-sm ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
-                            {formatRupiah(quote.price)}
-                          </span>
-                          {showSellingPrice && (
-                            <span className="block text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1 rounded mt-0.5">
-                              Jual: {formatRupiah(calculateSellingPrice(quote.price, settings).sellingPrice)}
-                            </span>
+                          {quoteConversions.length <= 1 ? (
+                            // 1 Satuan: Tampilkan HANYA 1 harga modal
+                            <div>
+                              <span className={`font-extrabold text-sm ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
+                                {formatRupiah(quote.price)}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-medium ml-1">
+                                /{quoteConversions[0]?.name || product.defaultUnit}
+                              </span>
+                            </div>
+                          ) : (
+                            // 2 Satuan: Menampilkan 2 harga modal mengikuti satuan
+                            <div>
+                              <span className={`font-extrabold text-sm ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
+                                {formatRupiah(quoteConversions[0].costPrice)}/{quoteConversions[0].name}
+                              </span>
+                              <span className="block text-[11px] text-blue-700 font-bold">
+                                {formatRupiah(quoteConversions[1].costPrice)}/{quoteConversions[1].name}
+                              </span>
+                            </div>
                           )}
+
+                          {showSellingPrice && (
+                            <div className="mt-0.5">
+                              {quoteConversions.length <= 1 ? (
+                                <span className="block text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1 rounded">
+                                  Jual: {formatRupiah(quoteConversions[0].sellingPrice)}/{quoteConversions[0].name}
+                                </span>
+                              ) : (
+                                <span className="block text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1 rounded">
+                                  Jual: {formatRupiah(quoteConversions[0].sellingPrice)}/{quoteConversions[0].name} • {formatRupiah(quoteConversions[1].sellingPrice)}/{quoteConversions[1].name}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
                           {!isCheapest && diff > 0 && (
                             <span className="block text-[10px] font-semibold text-rose-600 mt-0.5">
                               +{formatRupiah(diff)}
@@ -321,6 +367,10 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
             ) : (
               paginatedProducts.map((product) => {
                 const stats = getProductPriceStats(product);
+                const productUnits = normalizeProductUnits(product);
+                const isMulti = isProductMultiUnit(product);
+                const subCount = isMulti && productUnits.length > 1 ? productUnits[1].totalRatio : 1;
+                const subName = isMulti && productUnits.length > 1 ? productUnits[1].name : (productUnits[0]?.name || 'Satuan');
 
                 return (
                   <tr key={product.id} className="hover:bg-slate-50/80 transition-colors">
@@ -342,7 +392,7 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                           </span>
                         )}
                         <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded border border-emerald-100">
-                          {product.packContent || `1 ${product.defaultUnit} = ${product.subUnitCount || 10} ${product.subUnitName || 'lembar'}`}
+                          {isMulti ? (product.packContent || formatProductUnitSummary(product)) : `1 Satuan: ${product.defaultUnit}`}
                         </span>
                       </div>
                     </td>
@@ -367,6 +417,9 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
 
                       const isCheapest = stats.cheapestQuote && stats.cheapestQuote.id === quote.id;
                       const isMostExpensive = stats.expensiveQuote && stats.expensiveQuote.id === quote.id && stats.quoteCount > 1;
+                      const quoteSelling = calculateSellingPrice(quote.price, settings);
+                      const quoteSellingPrice = quote.sellingPrice || quoteSelling.sellingPrice;
+                      const quoteConversions = getProductUnitConversions(product, quote.price, quoteSellingPrice);
 
                       return (
                         <td 
@@ -376,25 +429,53 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                           }`}
                         >
                           <div className="flex flex-col items-center">
-                            <span 
-                              className={`font-bold text-xs sm:text-sm ${
-                                isCheapest 
-                                  ? 'text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md' 
-                                  : 'text-slate-800'
-                              }`}
-                            >
-                              {formatRupiah(quote.price)}
-                            </span>
-
-                            {showSellingPrice && (
-                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/60 px-1 rounded mt-0.5" title="Harga Jual Rekomendasi">
-                                Jual: {formatRupiah(calculateSellingPrice(quote.price, settings).sellingPrice)}
-                              </span>
+                            {quoteConversions.length <= 1 ? (
+                              // 1 Satuan: Tampilkan HANYA 1 harga modal dengan satuan
+                              <div className="flex items-baseline justify-center gap-0.5">
+                                <span 
+                                  className={`font-bold text-xs sm:text-sm font-mono ${
+                                    isCheapest 
+                                      ? 'text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md' 
+                                      : 'text-slate-800'
+                                  }`}
+                                >
+                                  {formatRupiah(quote.price)}
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-medium font-sans">
+                                  /{quoteConversions[0]?.name || product.defaultUnit}
+                                </span>
+                              </div>
+                            ) : (
+                              // 2 Satuan: Menampilkan 2 harga modal mengikuti satuan
+                              <div className="flex flex-col items-center">
+                                <span 
+                                  className={`font-bold text-xs sm:text-sm font-mono ${
+                                    isCheapest 
+                                      ? 'text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md' 
+                                      : 'text-slate-800'
+                                  }`}
+                                >
+                                  {formatRupiah(quoteConversions[0].costPrice)}/{quoteConversions[0].name}
+                                </span>
+                                <span className="text-[10px] text-blue-700 font-bold font-mono mt-0.5">
+                                  {formatRupiah(quoteConversions[1].costPrice)}/{quoteConversions[1].name}
+                                </span>
+                              </div>
                             )}
 
-                            <span className="text-[10px] text-slate-500 mt-0.5">
-                              ~{formatRupiah(quote.pricePerSubUnit || Math.round(quote.price / (product.subUnitCount || 10)))}/{product.subUnitName || 'lbr'}
-                            </span>
+                            {showSellingPrice && (
+                              <div className="mt-1">
+                                {quoteConversions.length <= 1 ? (
+                                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/60 px-1 py-0.2 rounded block" title="Harga Jual Rekomendasi">
+                                    Jual: {formatRupiah(quoteConversions[0].sellingPrice)}/{quoteConversions[0].name}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/60 px-1 py-0.2 rounded block" title="Harga Jual Rekomendasi">
+                                    Jual: {formatRupiah(quoteConversions[0].sellingPrice)}/{quoteConversions[0].name} • {formatRupiah(quoteConversions[1].sellingPrice)}/{quoteConversions[1].name}
+                                  </span>
+                                )}
+                              </div>
+                            )}
 
                             {isCheapest && (
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 mt-0.5">

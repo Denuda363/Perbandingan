@@ -328,7 +328,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     };
 
     let initialQuote;
-    const finalBoxPrice = parsedPrice > 0 ? parsedPrice : pharmaCalc.hargaJadiBox;
+    const finalBoxPrice = parsedPrice > 0 
+      ? parsedPrice 
+      : (pharmaCalc.hargaJadiBox > 0 ? pharmaCalc.hargaJadiBox : parsedHna);
     if (!productToEdit && hasInitialQuote && quoteSupplier.trim() && finalBoxPrice > 0) {
       const convertedSubPrice = unitMode === 'multi' && activeProductUnits.length > 1
         ? Math.round(finalBoxPrice / activeProductUnits[1].totalRatio)

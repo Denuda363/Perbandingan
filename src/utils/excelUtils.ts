@@ -7,6 +7,7 @@ export interface ParsedProductImportItem {
   company?: string;
   packaging?: string;
   packContent?: string;
+  hasMultiUnits?: boolean;
   subUnitCount?: number;
   subUnitName?: string;
   category: string;
@@ -42,6 +43,7 @@ export interface ImportedProductComparison {
   company?: string;
   packaging?: string;
   packContent?: string;
+  hasMultiUnits?: boolean;
   category: string;
   defaultUnit: string;
   subUnitCount: number;
@@ -81,6 +83,7 @@ export function groupImportedQuotesByProduct(quotes: ParsedProductImportItem[]):
         company: q.company,
         packaging: q.packaging,
         packContent: q.packContent,
+        hasMultiUnits: q.hasMultiUnits !== undefined ? q.hasMultiUnits : (q.subUnitCount ? q.subUnitCount > 1 : true),
         category: q.category || 'Umum',
         defaultUnit: q.defaultUnit || 'Box',
         subUnitCount: q.subUnitCount || 10,
@@ -95,6 +98,7 @@ export function groupImportedQuotesByProduct(quotes: ParsedProductImportItem[]):
     }
 
     const item = map.get(key)!;
+    if (q.hasMultiUnits !== undefined && item.hasMultiUnits === undefined) item.hasMultiUnits = q.hasMultiUnits;
     if (q.company && !item.company) item.company = q.company;
     if (q.packaging && !item.packaging) item.packaging = q.packaging;
     if (q.packContent && !item.packContent) item.packContent = q.packContent;

@@ -22,7 +22,17 @@ import {
   DollarSign
 } from 'lucide-react';
 import { Product, Supplier, AppSettings, DEFAULT_APP_SETTINGS, DiscountType, MarginType } from '../types';
-import { formatRupiah, getProductPriceStats, calculateSellingPrice, calculateMarginFormula, parseCurrencyInput } from '../utils/formatters';
+import { 
+  formatRupiah, 
+  getProductPriceStats, 
+  calculateSellingPrice, 
+  calculateMarginFormula, 
+  parseCurrencyInput,
+  normalizeProductUnits,
+  isProductMultiUnit,
+  getProductUnitConversions,
+  formatProductUnitSummary
+} from '../utils/formatters';
 import { Pagination } from './Pagination';
 
 interface SimulationCalculatorProps {
@@ -73,8 +83,16 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
     return settings.marginType === 'amount' ? settings.marginAmountValue : settings.marginPercent;
   });
 
-  const subCount = activeProduct?.subUnitCount || 10;
-  const subName = activeProduct?.subUnitName || 'lembar';
+  const productUnits = useMemo(() => {
+    return normalizeProductUnits(activeProduct);
+  }, [activeProduct]);
+
+  const isMulti = useMemo(() => {
+    return isProductMultiUnit(activeProduct);
+  }, [activeProduct]);
+
+  const subCount = isMulti && productUnits.length > 1 ? productUnits[1].totalRatio : 1;
+  const subName = isMulti && productUnits.length > 1 ? productUnits[1].name : (productUnits[0]?.name || 'Satuan');
 
   // Handler when selecting a product in Formula mode
   const handleProductPick = (prod: Product) => {
@@ -137,6 +155,14 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
     subCount,
     subName,
   ]);
+
+  const unitConversions = useMemo(() => {
+    return getProductUnitConversions(
+      activeProduct,
+      formulaResult.netCostAfterDiscounts,
+      formulaResult.sellingPrice
+    );
+  }, [activeProduct, formulaResult.netCostAfterDiscounts, formulaResult.sellingPrice]);
 
   // BASKET SIMULATION STATE
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
@@ -779,18 +805,22 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
                   </div>
 
                   <div className="text-right bg-black/40 p-2.5 rounded-lg border border-white/10">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Per {subName}</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                      {isMulti ? `Per ${subName}` : `Per ${productUnits[0]?.name || 'Satuan'}`}
+                    </span>
                     <span className="text-base font-bold text-white font-mono block">
-                      {formatRupiah(formulaResult.sellingPricePerSubUnit)}
+                      {isMulti 
+                        ? formatRupiah(formulaResult.sellingPricePerSubUnit)
+                        : formatRupiah(formulaResult.sellingPrice)}
                     </span>
                     <span className="text-[10px] text-emerald-300">
-                      Laba: +{formatRupiah(formulaResult.profitPerSubUnit)}
+                      Laba: +{formatRupiah(isMulti ? formulaResult.profitPerSubUnit : formulaResult.profitPerUnit)}
                     </span>
                   </div>
                 </div>
 
                 <div className="mt-3 pt-2 border-t border-white/10 flex items-center justify-between text-xs text-emerald-100">
-                  <span>Estimasi Laba Kotor per Box:</span>
+                  <span>Estimasi Laba Kotor ({activeProduct?.defaultUnit || 'Satuan'}):</span>
                   <span className="font-bold text-white font-mono">
                     +{formatRupiah(formulaResult.profitPerUnit)} ({formulaResult.profitPercentage}%)
                   </span>
@@ -800,6 +830,69 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
             </div>
 
           </div>
+
+          {/* Tabel Acuan Konversi Multi-Satuan & Harga Jual Apotek */}
+          {isMulti && unitConversions.length > 1 && (
+            <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-emerald-600" />
+                  <h4 className="font-bold text-sm text-slate-900">
+                    Tabel Acuan Konversi Satuan & Rincian Harga Jual ({activeProduct?.name})
+                  </h4>
+                </div>
+                <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  {formatProductUnitSummary(activeProduct)}
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] border-y border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3">Tingkat Satuan</th>
+                      <th className="py-2.5 px-3">Nama Satuan</th>
+                      <th className="py-2.5 px-3">Acuan Konversi</th>
+                      <th className="py-2.5 px-3">Modal Beli Net</th>
+                      <th className="py-2.5 px-3">Rekomendasi Harga Jual</th>
+                      <th className="py-2.5 px-3">Estimasi Laba per Satuan</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {unitConversions.map((conv, cIdx) => (
+                      <tr key={cIdx} className={conv.isBase ? 'bg-emerald-50/40 font-semibold' : 'hover:bg-slate-50'}>
+                        <td className="py-2.5 px-3">
+                          <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold text-white ${
+                            conv.level === 1 ? 'bg-emerald-600' : conv.level === 2 ? 'bg-blue-600' : 'bg-purple-600'
+                          }`}>
+                            {conv.level}
+                          </span>
+                          <span className="ml-1.5 text-slate-700">
+                            {conv.level === 1 ? 'Satuan Utama' : `Tingkat ${conv.level}`}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-slate-900">
+                          {conv.name}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          {conv.description}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
+                          {formatRupiah(conv.costPrice)}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono font-extrabold text-emerald-700 text-sm">
+                          {formatRupiah(conv.sellingPrice)}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-emerald-800 font-bold">
+                          +{formatRupiah(conv.profit)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Supplier Quotes Comparison Table for the active product using this formula */}
           {activeProduct && activeProduct.quotes.length > 0 && (
@@ -825,7 +918,7 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
                       <th className="py-2.5 px-3">Modal Beli Net</th>
                       <th className="py-2.5 px-3">+ PPN</th>
                       <th className="py-2.5 px-3">Rekomendasi Jual</th>
-                      <th className="py-2.5 px-3">Per {subName}</th>
+                      <th className="py-2.5 px-3">{isMulti ? `Per ${subName}` : 'Satuan'}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
@@ -869,7 +962,11 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
                             {formatRupiah(q.sellingPrice || qSelling.sellingPrice)}
                           </td>
                           <td className="py-2.5 px-3 font-mono text-slate-600">
-                            ~{formatRupiah(q.sellingPricePerSubUnit || Math.round((q.sellingPrice || qSelling.sellingPrice) / subCount))}
+                            {isMulti ? (
+                              `~${formatRupiah(q.sellingPricePerSubUnit || Math.round((q.sellingPrice || qSelling.sellingPrice) / subCount))}`
+                            ) : (
+                              <span className="font-semibold text-slate-700">{q.unit || activeProduct?.defaultUnit}</span>
+                            )}
                           </td>
                         </tr>
                       );

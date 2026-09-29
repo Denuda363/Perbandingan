@@ -871,10 +871,14 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                                 <div>
                                   Estimasi Jual ({settings.marginType === 'amount' ? `+${formatRupiah(settings.marginAmountValue)}` : `+${settings.marginPercent}%`}): <strong className="text-slate-900 font-bold">{formatRupiah(bestSelling)}</strong>
                                 </div>
-                                <span className="text-slate-300">•</span>
-                                <div className="text-slate-500">
-                                  ~{formatRupiah(bestPricePerSub)} / {p.subUnitName || 'lembar'}
-                                </div>
+                                {(p.hasMultiUnits !== false && (p.subUnitCount ? p.subUnitCount > 1 : true)) && (
+                                  <>
+                                    <span className="text-slate-300">•</span>
+                                    <div className="text-slate-500">
+                                      ~{formatRupiah(bestPricePerSub)} / {p.subUnitName || 'lembar'}
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>
