@@ -23,6 +23,7 @@ interface ProductModalProps {
       pricePerSubUnit?: number;
       priceWithPpn?: number;
       notes?: string;
+      unit?: string;
     }
   ) => void;
   productToEdit?: Product | null;
@@ -72,13 +73,14 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const [unitMode, setUnitMode] = useState<'single' | 'multi'>('multi');
   const [singleUnit, setSingleUnit] = useState('Botol');
   const [unitTiers, setUnitTiers] = useState<EditableUnitTier[]>([
-    { name: 'Box', content: 1 },
-    { name: 'Strip', content: 10 },
+    { name: 'Lembar', content: 1 },
+    { name: 'Box', content: 10 },
   ]);
 
   // Initial quote state (for new products)
   const [hasInitialQuote, setHasInitialQuote] = useState(false);
   const [quoteSupplier, setQuoteSupplier] = useState('');
+  const [quoteTargetUnit, setQuoteTargetUnit] = useState<'smallest' | 'second'>('smallest');
   const [quoteHna, setQuoteHna] = useState<string>('');
   const [quoteDiscount, setQuoteDiscount] = useState<string>('');
   const [quotePrice, setQuotePrice] = useState<string>('');
@@ -101,37 +103,22 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         setUnitMode('single');
         setSingleUnit(productToEdit.defaultUnit || productToEdit.units?.[0]?.name || 'Botol');
         setUnitTiers([
-          { name: productToEdit.defaultUnit || 'Box', content: 1 },
-          { name: 'Strip', content: 10 },
+          { name: 'Lembar', content: 1 },
+          { name: 'Box', content: 10 },
         ]);
-      } else if (productToEdit.units && productToEdit.units.length > 1) {
-        setUnitMode('multi');
-        setUnitTiers(productToEdit.units.map((u) => ({
-          name: u.name,
-          content: u.content || 1,
-        })));
-        setSingleUnit(productToEdit.units[0]?.name || 'Botol');
-      } else if (productToEdit.subUnitCount && productToEdit.subUnitCount > 1 && productToEdit.subUnitName) {
-        setUnitMode('multi');
-        setUnitTiers([
-          { name: productToEdit.defaultUnit || 'Box', content: 1 },
-          { name: productToEdit.subUnitName, content: productToEdit.subUnitCount },
-        ]);
-        setSingleUnit(productToEdit.defaultUnit || 'Botol');
       } else {
-        const isLikelySingle = COMMON_SINGLE_UNITS.includes(productToEdit.defaultUnit);
-        if (isLikelySingle) {
-          setUnitMode('single');
-          setSingleUnit(productToEdit.defaultUnit);
-          setUnitTiers([
-            { name: productToEdit.defaultUnit || 'Box', content: 1 },
-            { name: 'Strip', content: 10 },
-          ]);
+        setUnitMode('multi');
+        const normUnits = normalizeProductUnits(productToEdit);
+        if (normUnits && normUnits.length >= 2) {
+          setUnitTiers(normUnits.map((u) => ({
+            name: u.name,
+            content: u.content || 1,
+          })));
+          setSingleUnit(normUnits[0]?.name || 'Botol');
         } else {
-          setUnitMode('multi');
           setUnitTiers([
-            { name: productToEdit.defaultUnit || 'Box', content: 1 },
-            { name: productToEdit.subUnitName || 'Strip', content: productToEdit.subUnitCount || 10 },
+            { name: productToEdit.subUnitName || 'Lembar', content: 1 },
+            { name: productToEdit.defaultUnit || 'Box', content: productToEdit.subUnitCount || 10 },
           ]);
           setSingleUnit('Botol');
         }
@@ -147,6 +134,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       setDescription('');
       setHasInitialQuote(false);
       setQuoteSupplier(suppliers[0]?.name || '');
+      setQuoteTargetUnit('smallest');
       setQuoteHna('');
       setQuoteDiscount('');
       setQuotePrice('');
@@ -154,8 +142,8 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       setUnitMode('multi');
       setSingleUnit('Botol');
       setUnitTiers([
-        { name: 'Box', content: 1 },
-        { name: 'Strip', content: 10 },
+        { name: 'Lembar', content: 1 },
+        { name: 'Box', content: 10 },
       ]);
     }
   }, [productToEdit, isOpen, suppliers]);
@@ -173,7 +161,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       const content = level === 1 ? 1 : Math.max(1, t.content || 1);
       runningRatio = level === 1 ? 1 : runningRatio * content;
       return {
-        name: (t.name || (level === 1 ? 'Box' : 'Satuan')).trim(),
+        name: (t.name || (level === 1 ? 'Lembar' : 'Box')).trim(),
         content,
         totalRatio: runningRatio,
         level,
@@ -187,21 +175,21 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       return `1 ${singleUnit.trim() || 'Botol'}`;
     }
     if (activeProductUnits.length === 2) {
-      return `1 ${activeProductUnits[0].name} = ${activeProductUnits[1].content} ${activeProductUnits[1].name}`;
+      return `1 ${activeProductUnits[1].name} = ${activeProductUnits[1].content} ${activeProductUnits[0].name} (Satuan Utama: ${activeProductUnits[0].name})`;
     }
     if (activeProductUnits.length === 3) {
-      const u1 = activeProductUnits[0];
-      const u2 = activeProductUnits[1];
-      const u3 = activeProductUnits[2];
-      return `1 ${u1.name} = ${u2.content} ${u2.name} @ ${u3.content} ${u3.name} (Total: ${u3.totalRatio} ${u3.name})`;
+      const u0 = activeProductUnits[0];
+      const u1 = activeProductUnits[1];
+      const u2 = activeProductUnits[2];
+      return `1 ${u2.name} = ${u2.content} ${u1.name} (${u2.totalRatio} ${u0.name}) (Satuan Utama: ${u0.name})`;
     }
     if (activeProductUnits.length >= 4) {
-      const u1 = activeProductUnits[0];
+      const u0 = activeProductUnits[0];
       const middle = activeProductUnits.slice(1).map(u => `${u.content} ${u.name}`).join(' @ ');
       const last = activeProductUnits[activeProductUnits.length - 1];
-      return `1 ${u1.name} = ${middle} (Total: ${last.totalRatio} ${last.name})`;
+      return `1 ${last.name} = ${middle} (Total: ${last.totalRatio} ${u0.name}) (Satuan Utama: ${u0.name})`;
     }
-    return `1 ${activeProductUnits[0]?.name || 'Box'}`;
+    return `1 ${activeProductUnits[0]?.name || 'Lembar'}`;
   }, [unitMode, singleUnit, activeProductUnits]);
 
   // Handler to add a tier (up to 4 tiers)
@@ -328,21 +316,20 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     };
 
     let initialQuote;
-    const finalBoxPrice = parsedPrice > 0 
+    const finalPrice = parsedPrice > 0 
       ? parsedPrice 
       : (pharmaCalc.hargaJadiBox > 0 ? pharmaCalc.hargaJadiBox : parsedHna);
-    if (!productToEdit && hasInitialQuote && quoteSupplier.trim() && finalBoxPrice > 0) {
-      const convertedSubPrice = unitMode === 'multi' && activeProductUnits.length > 1
-        ? Math.round(finalBoxPrice / activeProductUnits[1].totalRatio)
-        : finalBoxPrice;
+    if (!productToEdit && hasInitialQuote && quoteSupplier.trim() && finalPrice > 0) {
+      const smallestUnitName = activeProductUnits[0]?.name || 'Satuan';
 
       initialQuote = {
         supplierName: quoteSupplier.trim(),
-        price: finalBoxPrice,
-        hna: parsedHna > 0 ? parsedHna : finalBoxPrice,
+        price: finalPrice,
+        hna: parsedHna > 0 ? parsedHna : finalPrice,
         discountPercent: parsedDisk > 0 ? parsedDisk : 0,
-        pricePerSubUnit: convertedSubPrice,
-        priceWithPpn: Math.round(finalBoxPrice * 1.11),
+        pricePerSubUnit: finalPrice,
+        priceWithPpn: Math.round(finalPrice * 1.11),
+        unit: smallestUnitName,
         notes: quoteNotes.trim() || undefined,
       };
     }
@@ -559,24 +546,29 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               {unitMode === 'multi' && (
                 <div className="space-y-3">
                   <div className="space-y-2.5">
-                    {/* Tier 1: Satuan Utama */}
-                    <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                    {/* Tier 1: Satuan Utama (Satuan Terkecil) */}
+                    <div className="bg-white p-3.5 rounded-xl border-2 border-emerald-300/80 shadow-2xs space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
                           <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center font-bold">1</span>
-                          Satuan Utama (Pembelian Terbesar)
+                          Satuan Utama (Satuan Terkecil)
                         </span>
-                        <span className="text-[10px] text-slate-400 font-medium">Acuan Harga Beli Utama</span>
+                        <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold">
+                          Acuan Dasar Perhitungan
+                        </span>
                       </div>
+                      <p className="text-[11px] text-slate-600">
+                        Satuan terkecil adalah satuan utama (contoh: Lembar, Strip, Tablet, Kapsul, Pcs).
+                      </p>
                       <input
                         type="text"
-                        placeholder="Contoh: Box, Dus, Karton"
+                        placeholder="Contoh: Lembar, Strip, Tablet, Kapsul"
                         value={unitTiers[0]?.name || ''}
                         onChange={(e) => handleUpdateTierName(0, e.target.value)}
                         className="w-full px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white text-slate-900"
                       />
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {COMMON_MAIN_UNITS.map((u) => (
+                        {COMMON_SUB_UNITS.map((u) => (
                           <button
                             key={u}
                             type="button"
@@ -593,41 +585,56 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Tier 2: Satuan Pecahan Pertama */}
-                    <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                    {/* Tier 2: Satuan Kedua (Kemasan Berisi Satuan Utama) */}
+                    <div className="bg-white p-3.5 rounded-xl border border-blue-200 space-y-2.5">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
                           <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">2</span>
-                          Satuan Tingkat 2 (Pecahan Pertama)
+                          Satuan Kedua (Kemasan Berisi Satuan Utama)
                         </span>
-                        <span className="text-[10px] text-blue-700 font-medium">
-                          1 {unitTiers[0]?.name || 'Box'} = {unitTiers[1]?.content || 10} {unitTiers[1]?.name || 'Strip'}
+                        <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 font-medium">
+                          Harga Dikonversi dari Satuan Terkecil
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[10px] text-slate-500 mb-0.5">Isi per {unitTiers[0]?.name || 'Box'}</label>
-                          <input
-                            type="number"
-                            min="1"
-                            value={unitTiers[1]?.content || 1}
-                            onChange={(e) => handleUpdateTierContent(1, parseInt(e.target.value) || 1)}
-                            className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-slate-500 mb-0.5">Nama Satuan</label>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Nama Satuan Kedua</label>
                           <input
                             type="text"
-                            placeholder="Strip / Lembar / Sachet"
+                            placeholder="Box / Dus / Pack"
                             value={unitTiers[1]?.name || ''}
                             onChange={(e) => handleUpdateTierName(1, e.target.value)}
                             className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white text-slate-900"
                           />
                         </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">
+                            Isi ({unitTiers[0]?.name || 'Lembar'} per {unitTiers[1]?.name || 'Box'})
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={unitTiers[1]?.content || 10}
+                            onChange={(e) => handleUpdateTierContent(1, parseInt(e.target.value) || 1)}
+                            className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white"
+                          />
+                        </div>
                       </div>
+
+                      {/* Info Box Contoh Konversi */}
+                      <div className="p-2.5 bg-blue-50/80 border border-blue-200/90 rounded-xl text-[11px] text-blue-900 leading-relaxed">
+                        <div className="font-bold flex items-center gap-1">
+                          <span>1 {unitTiers[1]?.name || 'Box'} = {unitTiers[1]?.content || 10} {unitTiers[0]?.name || 'Lembar'}</span>
+                        </div>
+                        <p className="text-[10px] text-blue-700 mt-0.5">
+                          Harga 1 {unitTiers[1]?.name || 'Box'} dihitung otomatis: <strong>{unitTiers[1]?.content || 10} × Harga {unitTiers[0]?.name || 'Lembar'}</strong>.
+                          <br />
+                          <em>Misal: Satuan kecil {unitTiers[0]?.name || 'Lembar'} = Rp 1.000, maka 1 {unitTiers[1]?.name || 'Box'} = Rp {(1000 * (unitTiers[1]?.content || 10)).toLocaleString('id-ID')}.</em>
+                        </p>
+                      </div>
+
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {COMMON_SUB_UNITS.map((u) => (
+                        {COMMON_MAIN_UNITS.map((u) => (
                           <button
                             key={u}
                             type="button"
@@ -920,7 +927,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                         <span className="text-[10px] font-bold text-slate-600">Konversi Satuan:</span>
                         {activeProductUnits.slice(1).map((tier, tIdx) => (
                           <span key={tIdx} className="bg-blue-50 text-blue-800 font-bold px-2 py-0.5 rounded border border-blue-200">
-                            ~{formatRupiah(Math.round((parsedPrice > 0 ? parsedPrice : pharmaCalc.hargaJadiBox) / tier.totalRatio))} / {tier.name}
+                            ~{formatRupiah(Math.round((parsedPrice > 0 ? parsedPrice : pharmaCalc.hargaJadiBox) * tier.totalRatio))} / {tier.name}
                           </span>
                         ))}
                       </div>

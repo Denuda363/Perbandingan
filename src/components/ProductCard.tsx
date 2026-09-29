@@ -211,7 +211,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                     // 1 Satuan: Tampilkan HANYA 1 harga modal sesuai satuannya
                     <div className="flex items-baseline gap-1">
                       <span className="text-base sm:text-lg font-bold text-slate-800 font-mono">
-                        {formatRupiah(stats.cheapestQuote.price)}
+                        {formatRupiah(bestConversions[0]?.costPrice || stats.cheapestQuote.price)}
                       </span>
                       <span className="text-xs text-slate-600 font-semibold font-sans">
                         / {bestConversions[0]?.name || stats.cheapestQuote.unit || product.defaultUnit}
@@ -220,7 +220,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   ) : (
                     // 2 Satuan / Multi-Satuan: Menampilkan 2 harga modal mengikuti satuan
                     <div className="inline-flex items-center gap-2 flex-wrap">
-                      <div className="flex items-baseline gap-1">
+                      <div className="flex items-baseline gap-1" title="Satuan Utama (Terkecil)">
                         <span className="text-base sm:text-lg font-bold text-slate-800 font-mono">
                           {formatRupiah(bestConversions[0].costPrice)}
                         </span>
@@ -232,6 +232,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                       {bestConversions.slice(1).map((tier, tIdx) => (
                         <span
                           key={tIdx}
+                          title={`Satuan Tingkat ${tier.level} (1 ${tier.name} = ${tier.content} ${bestConversions[0].name})`}
                           className="text-xs sm:text-sm font-bold text-blue-800 bg-blue-50/90 px-2 py-0.5 rounded-md border border-blue-200 font-mono inline-flex items-center gap-1"
                         >
                           <span>{formatRupiah(tier.costPrice)}</span>
@@ -416,7 +417,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                               <span className="text-slate-500 font-medium">Satuan:</span>
                               {quoteConversions.map((tier, tIdx) => (
                                 <span key={tIdx} className="bg-slate-100 text-slate-700 font-semibold px-1.5 py-0.5 rounded text-[10px] border border-slate-200">
-                                  {tier.name} {tIdx > 0 ? `(@${tier.content})` : ''}
+                                  {tier.name} {tIdx === 0 ? '(Utama)' : `(@${tier.content} ${quoteConversions[0].name})`}
                                 </span>
                               ))}
                             </div>
@@ -465,7 +466,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                           // 1 Satuan: Tampilkan HANYA 1 harga modal dengan satuannya
                           <div className="mt-0.5">
                             <span className={`font-black text-base sm:text-lg font-mono ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
-                              {formatRupiah(quote.price)}
+                              {formatRupiah(quoteConversions[0]?.costPrice || quote.price)}
                             </span>
                             <span className="text-[11px] text-slate-500 font-semibold block">
                               / {quoteConversions[0]?.name || quote.unit || product.defaultUnit}
@@ -474,7 +475,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                         ) : (
                           // 2 Satuan: Menampilkan 2 harga modal mengikuti satuannya
                           <div className="mt-0.5 space-y-0.5 text-right">
-                            <div className="flex items-baseline justify-end gap-1">
+                            <div className="flex items-baseline justify-end gap-1" title="Satuan Utama (Terkecil)">
                               <span className={`font-black text-sm sm:text-base font-mono ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
                                 {formatRupiah(quoteConversions[0].costPrice)}
                               </span>
@@ -483,7 +484,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                               </span>
                             </div>
                             {quoteConversions.slice(1).map((tier, tIdx) => (
-                              <div key={tIdx} className="flex items-baseline justify-end gap-1 text-[11px] font-bold text-blue-700 font-mono">
+                              <div key={tIdx} className="flex items-baseline justify-end gap-1 text-[11px] font-bold text-blue-700 font-mono" title={`1 ${tier.name} = ${tier.content} ${quoteConversions[0].name}`}>
                                 <span>{formatRupiah(tier.costPrice)}</span>
                                 <span className="text-slate-500 font-medium text-[10px] font-sans">/ {tier.name}</span>
                               </div>

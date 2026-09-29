@@ -51,9 +51,9 @@ import {
   seedInitialDataIfEmpty,
 } from './services/firebaseService';
 
-const STORAGE_KEY_PRODUCTS = 'harga_vendor_products_v1';
-const STORAGE_KEY_SUPPLIERS = 'harga_vendor_suppliers_v1';
-const STORAGE_KEY_SETTINGS = 'harga_vendor_settings_v1';
+const STORAGE_KEY_PRODUCTS = 'harga_vendor_products_v2';
+const STORAGE_KEY_SUPPLIERS = 'harga_vendor_suppliers_v2';
+const STORAGE_KEY_SETTINGS = 'harga_vendor_settings_v2';
 
 export default function App() {
   const [syncStatus, setSyncStatus] = useState<'connected' | 'syncing' | 'offline' | 'error'>('syncing');

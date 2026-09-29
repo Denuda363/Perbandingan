@@ -271,7 +271,7 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                             // 1 Satuan: Tampilkan HANYA 1 harga modal
                             <div>
                               <span className={`font-extrabold text-sm ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
-                                {formatRupiah(quote.price)}
+                                {formatRupiah(quoteConversions[0]?.costPrice || quote.price)}
                               </span>
                               <span className="text-[10px] text-slate-500 font-medium ml-1">
                                 /{quoteConversions[0]?.name || product.defaultUnit}
@@ -439,7 +439,7 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                                       : 'text-slate-800'
                                   }`}
                                 >
-                                  {formatRupiah(quote.price)}
+                                  {formatRupiah(quoteConversions[0]?.costPrice || quote.price)}
                                 </span>
                                 <span className="text-[10px] text-slate-500 font-medium font-sans">
                                   /{quoteConversions[0]?.name || product.defaultUnit}
