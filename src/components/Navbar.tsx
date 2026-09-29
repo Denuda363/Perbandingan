@@ -164,18 +164,88 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {/* Install PWA Button (Tablet & Desktop) */}
-            {onOpenInstallModal && (
+            {/* Desktop Excel & Data Tools Dropdown */}
+            <div className="relative hidden sm:block" ref={exportMenuRef}>
               <button
-                id="btn-nav-install-pwa"
-                onClick={onOpenInstallModal}
-                title="Pasang aplikasi di Smartphone / Layar Utama"
-                className="hidden sm:inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-bold text-emerald-950 bg-emerald-100/90 hover:bg-emerald-200 border border-emerald-300/80 rounded-lg transition-all cursor-pointer shadow-2xs group"
+                id="btn-desktop-excel-menu"
+                onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                title="Impor, Ekspor, dan Unduh Template Data Excel"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-950 bg-emerald-50 hover:bg-emerald-100/80 active:bg-emerald-200 border border-emerald-300/80 rounded-lg transition-colors cursor-pointer shadow-2xs"
               >
-                <Smartphone className="w-3.5 h-3.5 text-emerald-700 group-hover:scale-110 transition-transform shrink-0" />
-                <span className="hidden sm:inline">Pasang di HP</span>
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span>Menu Excel</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-emerald-700 transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
               </button>
-            )}
+
+              {isExportMenuOpen && (
+                <div className="absolute right-0 mt-1.5 w-60 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-3.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Alat & Integrasi Excel
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      onOpenImportExcel();
+                      setIsExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 flex items-center gap-2.5 cursor-pointer transition-colors"
+                  >
+                    <Upload className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <span className="font-semibold block">Impor File Excel</span>
+                      <span className="text-[10px] text-slate-500">Upload penawaran & produk (.xlsx)</span>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onDownloadTemplate();
+                      setIsExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 flex items-center gap-2.5 cursor-pointer transition-colors"
+                  >
+                    <Download className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <span className="font-semibold block">Unduh Template Excel</span>
+                      <span className="text-[10px] text-slate-500">Format resmi multi-supplier</span>
+                    </div>
+                  </button>
+
+                  <div className="my-1 border-t border-slate-100" />
+                  <div className="px-3.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Unduh / Cadangkan Data
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      onExportExcel();
+                      setIsExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer transition-colors"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-blue-600 shrink-0" />
+                    <div>
+                      <span className="font-semibold block">Ekspor Semua Data (.xlsx)</span>
+                      <span className="text-[10px] text-slate-500">2 Sheet lengkap (Master + Quotes)</span>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onExportCSV();
+                      setIsExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer transition-colors"
+                  >
+                    <Download className="w-4 h-4 text-slate-500 shrink-0" />
+                    <div>
+                      <span className="font-semibold block">Ekspor ke CSV (.csv)</span>
+                      <span className="text-[10px] text-slate-500">Format tabel komparasi cepat</span>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Settings Button (Tablet & Desktop) */}
             {onOpenSettings && (
@@ -195,93 +265,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {/* Import Excel Button (Desktop / Tablet) */}
-            <button
-              id="btn-import-excel"
-              onClick={onOpenImportExcel}
-              title="Import data produk dan supplier dari file Excel"
-              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-semibold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300/80 rounded-lg transition-colors cursor-pointer shadow-2xs"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-              <span>Import Excel</span>
-            </button>
-
-            {/* Download Template Excel Quick Button */}
-            <button
-              id="btn-nav-template"
-              onClick={onDownloadTemplate}
-              title="Download template format file Excel resmi"
-              className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
-              <span>Template</span>
-            </button>
-
-            {/* Export Dropdown Button */}
-            <div className="relative" ref={exportMenuRef}>
-              <button
-                id="btn-export-menu"
-                onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
-                title="Unduh seluruh data"
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors cursor-pointer shadow-2xs"
-              >
-                <Download className="w-3.5 h-3.5 text-slate-600" />
-                <span>Ekspor</span>
-                <ChevronDown className="w-3 h-3 text-slate-400" />
-              </button>
-
-              {isExportMenuOpen && (
-                <div className="absolute right-0 mt-1.5 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
-                  <button
-                    onClick={() => {
-                      onExportExcel();
-                      setIsExportMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 flex items-center gap-2 cursor-pointer"
-                  >
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                    <div>
-                      <span className="font-semibold block">Ekspor ke Excel (.xlsx)</span>
-                      <span className="text-[10px] text-slate-500">2 Sheet lengkap dengan master</span>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      onExportCSV();
-                      setIsExportMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-100 flex items-center gap-2 cursor-pointer"
-                  >
-                    <Download className="w-4 h-4 text-slate-500" />
-                    <div>
-                      <span className="font-semibold block">Ekspor ke CSV (.csv)</span>
-                      <span className="text-[10px] text-slate-500">Format tabel komparasi</span>
-                    </div>
-                  </button>
-
-                  <div className="my-1 border-t border-slate-100" />
-
-                  <button
-                    onClick={() => {
-                      onDownloadTemplate();
-                      setIsExportMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3.5 py-2 text-xs text-emerald-800 hover:bg-emerald-50 flex items-center gap-2 cursor-pointer font-medium"
-                  >
-                    <Download className="w-4 h-4 text-emerald-600" />
-                    <span>Unduh Template Excel</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
             {/* Input Quote Button */}
             <button
               id="btn-nav-add-quote"
               onClick={onOpenAddQuote}
               disabled={productCount === 0}
-              className="hidden xl:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              className="hidden lg:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Input Penawaran</span>

@@ -191,26 +191,42 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
         {/* Highlight Best Deal Section */}
         {stats.cheapestQuote && cheapestSelling ? (
-          <div className="mt-3.5 p-3 sm:p-3.5 rounded-xl bg-gradient-to-br from-emerald-50/90 to-teal-50/70 border border-emerald-200/90 shadow-2xs">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                    <Award className="w-3 h-3 text-emerald-700" />
-                    Supplier Termurah
-                  </span>
-                  <span className="text-xs font-bold text-slate-900">
-                    {stats.cheapestQuote.supplierName}
-                  </span>
+          <div className="mt-3.5 p-3.5 rounded-xl bg-gradient-to-br from-emerald-50/95 via-teal-50/80 to-emerald-50/60 border border-emerald-200 shadow-xs">
+            
+            {/* Header: Termurah & Hemat */}
+            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-emerald-200/70 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                  <Award className="w-3.5 h-3.5 text-emerald-700" />
+                  Supplier Termurah
+                </span>
+                <span className="text-xs sm:text-sm font-bold text-slate-900">
+                  {stats.cheapestQuote.supplierName}
+                </span>
+              </div>
+
+              {stats.difference > 0 && (
+                <div className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300/80 px-2 py-0.5 rounded-full">
+                  <TrendingDown className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5]" />
+                  <span>Hemat {stats.savingsPercentage}% ({formatRupiah(stats.difference)})</span>
                 </div>
-                
-                {/* Modal Beli */}
-                <div className="flex items-baseline gap-2 mt-1 flex-wrap">
-                  <span className="text-xs text-slate-500 font-semibold">Modal Beli:</span>
+              )}
+            </div>
+
+            {/* 2-Column Responsive Layout for Modal Beli & Harga Jual */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+              
+              {/* Box 1: Modal Beli */}
+              <div className="bg-white/90 p-2.5 rounded-lg border border-emerald-100 flex flex-col justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">
+                    Modal Beli Terbaik:
+                  </span>
+                  
                   {bestConversions.length <= 1 ? (
                     // 1 Satuan: Tampilkan HANYA 1 harga modal sesuai satuannya
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-base sm:text-lg font-bold text-slate-800 font-mono">
+                    <div className="flex items-baseline gap-1 mt-1">
+                      <span className="text-lg sm:text-xl font-bold text-slate-900 font-mono">
                         {formatRupiah(bestConversions[0]?.costPrice || stats.cheapestQuote.price)}
                       </span>
                       <span className="text-xs text-slate-600 font-semibold font-sans">
@@ -218,98 +234,95 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                       </span>
                     </div>
                   ) : (
-                    // 2 Satuan / Multi-Satuan: Menampilkan 2 harga modal mengikuti satuan
-                    <div className="inline-flex items-center gap-2 flex-wrap">
+                    // 2 Satuan / Multi-Satuan: Menampilkan harga Satuan Utama & Satuan Turunan
+                    <div className="mt-1 space-y-1">
                       <div className="flex items-baseline gap-1" title="Satuan Utama (Terkecil)">
-                        <span className="text-base sm:text-lg font-bold text-slate-800 font-mono">
+                        <span className="text-lg sm:text-xl font-bold text-slate-900 font-mono">
                           {formatRupiah(bestConversions[0].costPrice)}
                         </span>
                         <span className="text-xs text-slate-600 font-semibold font-sans">
                           / {bestConversions[0].name}
                         </span>
-                      </div>
-                      <span className="text-slate-300">•</span>
-                      {bestConversions.slice(1).map((tier, tIdx) => (
-                        <span
-                          key={tIdx}
-                          title={`Satuan Tingkat ${tier.level} (1 ${tier.name} = ${tier.content} ${bestConversions[0].name})`}
-                          className="text-xs sm:text-sm font-bold text-blue-800 bg-blue-50/90 px-2 py-0.5 rounded-md border border-blue-200 font-mono inline-flex items-center gap-1"
-                        >
-                          <span>{formatRupiah(tier.costPrice)}</span>
-                          <span className="text-[11px] font-semibold text-slate-600 font-sans">/ {tier.name}</span>
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
+                          Utama
                         </span>
-                      ))}
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {bestConversions.slice(1).map((tier, tIdx) => (
+                          <span
+                            key={tIdx}
+                            title={`Satuan Tingkat ${tier.level} (1 ${tier.name} = ${tier.content} ${bestConversions[0].name})`}
+                            className="text-xs font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 font-mono inline-flex items-center gap-1"
+                          >
+                            <span>{formatRupiah(tier.costPrice)}</span>
+                            <span className="text-[10px] font-semibold text-slate-600 font-sans">/ {tier.name}</span>
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
+
+                <div className="text-[10px] text-slate-500 mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between">
+                  <span>Satuan Pokok</span>
+                  <span className="font-semibold text-slate-700">{bestConversions[0]?.name || product.defaultUnit}</span>
+                </div>
               </div>
 
-              {stats.difference > 0 && (
-                <div className="text-right shrink-0">
-                  <div className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-1 rounded-full">
-                    <TrendingDown className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
-                    <span>Hemat {stats.savingsPercentage}%</span>
+              {/* Box 2: Rekomendasi Harga Jual */}
+              <div className="bg-white/90 p-2.5 rounded-lg border border-emerald-100 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-900 flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3 text-emerald-700" />
+                      Harga Jual (+{settings.marginPercent}%):
+                    </span>
                   </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Selisih {formatRupiah(stats.difference)}
-                  </p>
-                </div>
-              )}
-            </div>
 
-            {/* Rekomendasi Harga Jual: (Modal - D1 - D2 + PPN) + Margin */}
-            <div className="mt-2.5 pt-2.5 border-t border-emerald-200/70 flex flex-col xs:flex-row xs:items-center justify-between gap-1.5 bg-white/90 p-2.5 rounded-lg border border-emerald-100">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-900 bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-1">
-                    <TrendingUp className="w-3 h-3 text-emerald-700" />
-                    Harga Jual ({settings.marginType === 'amount' ? `+${formatRupiah(settings.marginAmountValue)}` : `+${settings.marginPercent}%`} Margin):
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-2 mt-1 flex-wrap">
-                  {bestConversions.length <= 1 ? (
-                    // 1 Satuan: Tampilkan HANYA 1 harga jual sesuai satuannya
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono">
-                        {formatRupiah(cheapestSelling.sellingPrice)}
-                      </span>
-                      <span className="text-xs text-slate-600 font-semibold font-sans">
-                        / {bestConversions[0]?.name || stats.cheapestQuote.unit || product.defaultUnit}
-                      </span>
-                    </div>
-                  ) : (
-                    // 2 Satuan / Multi-Satuan: Menampilkan 2 harga jual mengikuti satuan
-                    <div className="inline-flex items-center gap-2 flex-wrap">
+                  <div className="mt-1">
+                    {bestConversions.length <= 1 ? (
+                      // 1 Satuan: Tampilkan HANYA 1 harga jual sesuai satuannya
                       <div className="flex items-baseline gap-1">
                         <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono">
-                          {formatRupiah(bestConversions[0].sellingPrice)}
+                          {formatRupiah(cheapestSelling.sellingPrice)}
                         </span>
                         <span className="text-xs text-slate-600 font-semibold font-sans">
-                          / {bestConversions[0].name}
+                          / {bestConversions[0]?.name || stats.cheapestQuote.unit || product.defaultUnit}
                         </span>
                       </div>
-                      <span className="text-slate-300">•</span>
-                      {bestConversions.slice(1).map((tier, tIdx) => (
-                        <span
-                          key={tIdx}
-                          className="text-xs sm:text-sm font-black text-emerald-900 bg-emerald-100/90 px-2 py-0.5 rounded-md border border-emerald-300/80 font-mono inline-flex items-center gap-1"
-                        >
-                          <span>{formatRupiah(tier.sellingPrice)}</span>
-                          <span className="text-[11px] font-semibold text-emerald-950 font-sans">/ {tier.name}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                    ) : (
+                      // 2 Satuan / Multi-Satuan: Menampilkan harga jual mengikuti satuan
+                      <div className="space-y-1">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono">
+                            {formatRupiah(bestConversions[0].sellingPrice)}
+                          </span>
+                          <span className="text-xs text-slate-600 font-semibold font-sans">
+                            / {bestConversions[0].name}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {bestConversions.slice(1).map((tier, tIdx) => (
+                            <span
+                              key={tIdx}
+                              className="text-xs font-black text-emerald-900 bg-emerald-100/90 px-2 py-0.5 rounded border border-emerald-300 font-mono inline-flex items-center gap-1"
+                            >
+                              <span>{formatRupiah(tier.sellingPrice)}</span>
+                              <span className="text-[10px] font-semibold text-emerald-950 font-sans">/ {tier.name}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-emerald-800 mt-1.5 pt-1.5 border-t border-emerald-100 flex items-center justify-between">
+                  <span>Estimasi Laba:</span>
+                  <span className="font-extrabold text-emerald-700">+{formatRupiah(cheapestSelling.profitPerUnit)}</span>
                 </div>
               </div>
 
-              <div className="text-left xs:text-right text-[11px] shrink-0">
-                <span className="text-slate-600">Estimasi Laba: </span>
-                <span className="font-extrabold text-emerald-700">+{formatRupiah(cheapestSelling.profitPerUnit)}</span>
-                <p className="text-[10px] text-slate-400">
-                  {settings.ppnEnabled ? `(PPN ${settings.ppnPercent}% aktif)` : '(Non-PPN)'}
-                </p>
-              </div>
             </div>
           </div>
         ) : (
