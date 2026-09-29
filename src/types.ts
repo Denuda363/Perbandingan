@@ -37,6 +37,14 @@ export interface SupplierQuote {
   inStock?: boolean;
 }
 
+export interface ProductUnitTier {
+  id?: string;
+  name: string; // Nama satuan, contoh: "Box", "Strip", "Tablet", "Botol", "Tube", "Pcs"
+  content: number; // Isi relatif terhadap satuan level sebelumnya (Level 1 selalu 1; Level 2 misal 10 Strip/Box; Level 3 misal 10 Tablet/Strip)
+  totalRatio: number; // Rasio total terhadap Satuan Utama (Level 1 = 1; Level 2 = 10; Level 3 = 100)
+  level: number; // 1 = Satuan Utama/Terbesar, 2 = Satuan Menengah/Pecahan 1, 3 = Satuan Terkecil/Pecahan 2, dst.
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -44,6 +52,8 @@ export interface Product {
   company?: string; // Company / Produsen Produk (contoh: "PT Kimia Farma", "Kalbe Farma", "Sanbe Farma")
   packaging?: string; // Kemasan (contoh: "Tablet 10 x 10", "Strip 10 x 10", "Botol 60ml")
   packContent?: string; // Isi (contoh: "1 Box = 10 Lembar", "1 Box = 10 Strip @ 10 Tablet")
+  hasMultiUnits?: boolean; // false jika hanya 1 satuan, true jika > 1 satuan
+  units?: ProductUnitTier[]; // Hierarki multi-satuan dengan isi konversi harga
   subUnitCount?: number; // Jumlah unit kecil per kemasan utama (contoh: 10)
   subUnitName?: string; // Nama satuan pecahan kecil (contoh: "lembar", "strip", "tablet", "pcs")
   category: string;

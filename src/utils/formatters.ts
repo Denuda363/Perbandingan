@@ -1,4 +1,4 @@
-import { Product, SupplierQuote, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
+import { Product, SupplierQuote, AppSettings, DEFAULT_APP_SETTINGS, ProductUnitTier } from '../types';
 
 export function formatRupiah(value: number): string {
   if (isNaN(value)) return 'Rp 0';
@@ -543,4 +543,172 @@ export function exportProductsToCSV(products: Product[]): void {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+export interface ProductUnitConversion {
+  name: string; // Nama satuan, misal: "Box", "Strip", "Tablet", "Botol", "Pcs"
+  level: number; // 1 (Utama), 2 (Menengah), 3 (Terkecil)
+  content: number; // Isi per satuan tingkat sebelumnya (Level 1 = 1)
+  totalRatio: number; // Rasio konversi total terhadap satuan utama
+  costPrice: number; // Modal beli per satuan ini
+  sellingPrice: number; // Estimasi harga jual apotek per satuan ini
+  profit: number; // Laba kotor per satuan ini
+  isBase: boolean; // True jika ini adalah satuan utama / pembelian
+  description: string; // Teks penjelas (contoh: "1 Box = 10 Strip" atau "Satuan Utama")
+}
+
+/**
+ * Menormalkan struktur satuan produk menjadi daftar tier hierarki.
+ * Mendukung:
+ * - Produk dengan 1 satuan saja (Single Unit, e.g. Botol, Tube, Vial, Pcs)
+ * - Produk dengan > 1 satuan (Multi Satuan / Satuan Bertingkat) dengan rasio isi acuan konversi harga
+ */
+export function normalizeProductUnits(product: Partial<Product> | null | undefined): ProductUnitTier[] {
+  if (!product) {
+    return [{ name: 'Box', content: 1, totalRatio: 1, level: 1 }];
+  }
+
+  // Jika produk memiliki konfigurasi units eksplisit
+  if (product.units && Array.isArray(product.units) && product.units.length > 0) {
+    let currentRatio = 1;
+    return product.units.map((u, idx) => {
+      const level = idx + 1;
+      const content = level === 1 ? 1 : Math.max(1, u.content || 1);
+      currentRatio = level === 1 ? 1 : currentRatio * content;
+      return {
+        name: (u.name || (level === 1 ? product.defaultUnit || 'Box' : 'Satuan')).trim(),
+        content,
+        totalRatio: currentRatio,
+        level,
+      };
+    });
+  }
+
+  // Jika produk dinyatakan hanya memiliki 1 satuan saja (hasMultiUnits === false)
+  if (product.hasMultiUnits === false) {
+    return [{
+      name: (product.defaultUnit || 'Pcs').trim(),
+      content: 1,
+      totalRatio: 1,
+      level: 1,
+    }];
+  }
+
+  // Jika produk memiliki data pecahan legacy (subUnitCount & subUnitName)
+  const subCount = product.subUnitCount !== undefined ? product.subUnitCount : 0;
+  const subName = (product.subUnitName || '').trim();
+
+  // Jika subUnitCount > 1 dan nama satuan pecahan berbeda dari satuan utama
+  if (subCount > 1 && subName && subName.toLowerCase() !== (product.defaultUnit || '').toLowerCase()) {
+    return [
+      {
+        name: (product.defaultUnit || 'Box').trim(),
+        content: 1,
+        totalRatio: 1,
+        level: 1,
+      },
+      {
+        name: subName,
+        content: subCount,
+        totalRatio: subCount,
+        level: 2,
+      },
+    ];
+  }
+
+  // Satuan non-pecahan tunggal
+  return [{
+    name: (product.defaultUnit || 'Box').trim(),
+    content: 1,
+    totalRatio: 1,
+    level: 1,
+  }];
+}
+
+/**
+ * Menghitung rincian konversi harga (modal beli, estimasi harga jual, dan laba)
+ * untuk setiap satuan produk berdasarkan isi rasio konversi.
+ */
+export function getProductUnitConversions(
+  product: Partial<Product> | null | undefined,
+  baseCostPrice: number,
+  baseSellingPrice?: number
+): ProductUnitConversion[] {
+  const units = normalizeProductUnits(product);
+  const cost = Math.max(0, baseCostPrice || 0);
+  const selling = baseSellingPrice !== undefined ? Math.max(0, baseSellingPrice) : 0;
+
+  return units.map((tier, idx) => {
+    const isBase = tier.level === 1;
+    const ratio = Math.max(1, tier.totalRatio || 1);
+    const unitCost = Math.round(cost / ratio);
+    const unitSelling = selling > 0 ? Math.round(selling / ratio) : 0;
+    const profit = unitSelling > 0 ? unitSelling - unitCost : 0;
+
+    let description = 'Satuan Utama';
+    if (!isBase) {
+      const prevTier = units[idx - 1];
+      if (prevTier) {
+        description = `1 ${prevTier.name} = ${tier.content} ${tier.name}`;
+        if (tier.level > 2) {
+          description += ` (Total: ${tier.totalRatio} ${tier.name} per ${units[0].name})`;
+        }
+      }
+    }
+
+    return {
+      name: tier.name,
+      level: tier.level,
+      content: tier.content,
+      totalRatio: tier.totalRatio,
+      costPrice: unitCost,
+      sellingPrice: unitSelling,
+      profit,
+      isBase,
+      description,
+    };
+  });
+}
+
+/**
+ * Memeriksa apakah produk merupakan produk multi-satuan (> 1 satuan)
+ * atau hanya memiliki 1 satuan tunggal.
+ */
+export function isProductMultiUnit(product: Partial<Product> | null | undefined): boolean {
+  if (!product) return false;
+  if (product.hasMultiUnits === false) return false;
+  const units = normalizeProductUnits(product);
+  return units.length > 1;
+}
+
+/**
+ * Format teks ringkas hierarki satuan produk untuk ditampilkan di kartu atau label.
+ * Contoh:
+ * - 1 Satuan: "1 Satuan: Botol (Tunggal)"
+ * - 2 Satuan: "1 Box = 10 Strip"
+ * - 3 Satuan: "1 Box = 10 Strip @ 10 Tablet (100 Tablet)"
+ * - 4 Satuan: "1 Karton = 24 Box @ 10 Strip @ 10 Tablet"
+ */
+export function formatProductUnitSummary(product: Partial<Product> | null | undefined): string {
+  const units = normalizeProductUnits(product);
+  if (units.length <= 1) {
+    return `1 Satuan: ${units[0]?.name || 'Pcs'}`;
+  }
+
+  if (units.length === 2) {
+    return `1 ${units[0].name} = ${units[1].content} ${units[1].name}`;
+  }
+
+  if (units.length === 3) {
+    const tier1 = units[0];
+    const tier2 = units[1];
+    const tier3 = units[2];
+    return `1 ${tier1.name} = ${tier2.content} ${tier2.name} @ ${tier3.content} ${tier3.name} (${tier3.totalRatio} ${tier3.name})`;
+  }
+
+  // 4 atau lebih tingkatan satuan
+  const tier1 = units[0];
+  const middle = units.slice(1).map(u => `${u.content} ${u.name}`).join(' @ ');
+  const last = units[units.length - 1];
+  return `1 ${tier1.name} = ${middle} (Total: ${last.totalRatio} ${last.name})`;
 }

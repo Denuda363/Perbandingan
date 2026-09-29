@@ -19,7 +19,15 @@ import {
   Tag
 } from 'lucide-react';
 import { Product, SupplierQuote, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
-import { formatRupiah, getProductPriceStats, calculateSellingPrice } from '../utils/formatters';
+import { 
+  formatRupiah, 
+  getProductPriceStats, 
+  calculateSellingPrice,
+  normalizeProductUnits,
+  isProductMultiUnit,
+  getProductUnitConversions,
+  formatProductUnitSummary
+} from '../utils/formatters';
 
 interface ProductCardProps {
   product: Product;
@@ -52,12 +60,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const displayedQuotes = showAllQuotes ? quotesSorted : quotesSorted.slice(0, 3);
   const hasMoreQuotes = quotesSorted.length > 3;
 
-  const subCount = product.subUnitCount || 10;
-  const subName = product.subUnitName || 'lembar';
+  const productUnits = normalizeProductUnits(product);
+  const isMulti = isProductMultiUnit(product);
+  const subCount = isMulti && productUnits.length > 1 ? productUnits[1].totalRatio : 1;
+  const subName = isMulti && productUnits.length > 1 ? productUnits[1].name : (productUnits[0]?.name || 'Satuan');
 
   const cheapestSelling = stats.cheapestQuote 
     ? calculateSellingPrice(stats.cheapestQuote.price, settings)
     : null;
+
+  const bestConversions = stats.cheapestQuote && cheapestSelling
+    ? getProductUnitConversions(product, stats.cheapestQuote.price, cheapestSelling.sellingPrice)
+    : [];
 
   return (
     <div 
@@ -100,10 +114,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 </div>
               )}
 
-              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 text-[11px] font-medium border border-emerald-200/70">
-                <PackageCheck className="w-3 h-3 text-emerald-600 shrink-0" />
-                <span>Isi: <strong>{product.packContent || `1 ${product.defaultUnit || 'Box'} = ${subCount} ${subName}`}</strong></span>
-              </div>
+              {isMulti ? (
+                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 text-[11px] font-medium border border-emerald-200/70">
+                  <PackageCheck className="w-3 h-3 text-emerald-600 shrink-0" />
+                  <span>Isi: <strong>{product.packContent || formatProductUnitSummary(product)}</strong></span>
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-800 text-[11px] font-medium border border-blue-200/70">
+                  <PackageCheck className="w-3 h-3 text-blue-600 shrink-0" />
+                  <span>Satuan: <strong>{product.defaultUnit} (1 Satuan Tunggal)</strong></span>
+                </div>
+              )}
             </div>
 
             {product.genericName && (
@@ -192,9 +213,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   <span className="text-xs text-slate-500">
                     / {stats.cheapestQuote.unit || product.defaultUnit}
                   </span>
-                  <span className="text-[11px] text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                    ~{formatRupiah(stats.cheapestQuote.pricePerSubUnit || Math.round(stats.cheapestQuote.price / subCount))} / {subName}
-                  </span>
+                  {isMulti && bestConversions.length > 1 && (
+                    <div className="inline-flex items-center gap-1.5 flex-wrap">
+                      {bestConversions.slice(1).map((tier, tIdx) => (
+                        <span key={tIdx} className="text-[11px] text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                          ~{formatRupiah(tier.costPrice)} / {tier.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -227,9 +254,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   <span className="text-xs text-slate-600 font-medium">
                     / {stats.cheapestQuote.unit || product.defaultUnit}
                   </span>
-                  <span className="text-[11px] text-emerald-800 bg-emerald-100/90 font-bold px-1.5 py-0.5 rounded">
-                    ~{formatRupiah(Math.round(cheapestSelling.sellingPrice / subCount))} / {subName}
-                  </span>
+                  {isMulti && bestConversions.length > 1 && (
+                    <div className="inline-flex items-center gap-1.5 flex-wrap">
+                      {bestConversions.slice(1).map((tier, tIdx) => (
+                        <span key={tIdx} className="text-[11px] text-emerald-800 bg-emerald-100/90 font-bold px-1.5 py-0.5 rounded">
+                          ~{formatRupiah(tier.sellingPrice)} / {tier.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

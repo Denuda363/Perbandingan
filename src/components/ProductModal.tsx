@@ -1,7 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { X, Package, Plus, DollarSign, Building2, Layers, Calculator } from 'lucide-react';
-import { Product, Supplier } from '../types';
-import { calculatePharmaPricing, formatRupiah, parseCurrencyInput } from '../utils/formatters';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Package, Plus, DollarSign, Building2, Layers, Calculator, Trash2, CheckCircle2, ArrowRight, Info, Check } from 'lucide-react';
+import { Product, Supplier, ProductUnitTier } from '../types';
+import { 
+  calculatePharmaPricing, 
+  formatRupiah, 
+  parseCurrencyInput,
+  normalizeProductUnits,
+  getProductUnitConversions,
+  formatProductUnitSummary
+} from '../utils/formatters';
 
 interface ProductModalProps {
   isOpen: boolean;
@@ -34,7 +41,15 @@ const COMMON_CATEGORIES = [
   'Lainnya',
 ];
 
-const COMMON_UNITS = ['Box', 'Strip', 'Botol', 'Pcs', 'Jerigen 1L', 'Jerigen 5L', 'Sachet', 'Vial', 'Ampul'];
+const COMMON_SINGLE_UNITS = ['Botol', 'Tube', 'Pcs', 'Jerigen 1L', 'Jerigen 5L', 'Vial', 'Ampul', 'Sachet', 'Flacon', 'Pot'];
+const COMMON_MAIN_UNITS = ['Box', 'Dus', 'Karton', 'Pack', 'Slop'];
+const COMMON_SUB_UNITS = ['Strip', 'Lembar', 'Blister', 'Sachet', 'Botol', 'Pcs', 'Tube'];
+const COMMON_BASE_UNITS = ['Tablet', 'Kaplet', 'Kapsul', 'Pcs', 'Butir', 'Biji', 'Ml'];
+
+interface EditableUnitTier {
+  name: string;
+  content: number; // isi per level sebelumnya (level 1 content = 1)
+}
 
 export const ProductModal: React.FC<ProductModalProps> = ({
   isOpen,
@@ -48,12 +63,18 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const [company, setCompany] = useState('');
   const [packaging, setPackaging] = useState('');
   const [packContent, setPackContent] = useState('');
-  const [subUnitCount, setSubUnitCount] = useState<number>(10);
-  const [subUnitName, setSubUnitName] = useState('lembar');
   const [category, setCategory] = useState(COMMON_CATEGORIES[0]);
-  const [defaultUnit, setDefaultUnit] = useState('Box');
   const [sku, setSku] = useState('');
   const [description, setDescription] = useState('');
+
+  // UNIT CONFIGURATION STATE
+  // Mode: 'single' (1 satuan saja) vs 'multi' (> 1 satuan)
+  const [unitMode, setUnitMode] = useState<'single' | 'multi'>('multi');
+  const [singleUnit, setSingleUnit] = useState('Botol');
+  const [unitTiers, setUnitTiers] = useState<EditableUnitTier[]>([
+    { name: 'Box', content: 1 },
+    { name: 'Strip', content: 10 },
+  ]);
 
   // Initial quote state (for new products)
   const [hasInitialQuote, setHasInitialQuote] = useState(false);
@@ -70,23 +91,58 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       setCompany(productToEdit.company || '');
       setPackaging(productToEdit.packaging || '');
       setPackContent(productToEdit.packContent || '');
-      setSubUnitCount(productToEdit.subUnitCount || 10);
-      setSubUnitName(productToEdit.subUnitName || 'lembar');
       setCategory(productToEdit.category);
-      setDefaultUnit(productToEdit.defaultUnit);
       setSku(productToEdit.sku || '');
       setDescription(productToEdit.description || '');
       setHasInitialQuote(false);
+
+      // Determine unit mode and tiers from product data
+      if (productToEdit.hasMultiUnits === false || (productToEdit.units && productToEdit.units.length === 1)) {
+        setUnitMode('single');
+        setSingleUnit(productToEdit.defaultUnit || productToEdit.units?.[0]?.name || 'Botol');
+        setUnitTiers([
+          { name: productToEdit.defaultUnit || 'Box', content: 1 },
+          { name: 'Strip', content: 10 },
+        ]);
+      } else if (productToEdit.units && productToEdit.units.length > 1) {
+        setUnitMode('multi');
+        setUnitTiers(productToEdit.units.map((u) => ({
+          name: u.name,
+          content: u.content || 1,
+        })));
+        setSingleUnit(productToEdit.units[0]?.name || 'Botol');
+      } else if (productToEdit.subUnitCount && productToEdit.subUnitCount > 1 && productToEdit.subUnitName) {
+        setUnitMode('multi');
+        setUnitTiers([
+          { name: productToEdit.defaultUnit || 'Box', content: 1 },
+          { name: productToEdit.subUnitName, content: productToEdit.subUnitCount },
+        ]);
+        setSingleUnit(productToEdit.defaultUnit || 'Botol');
+      } else {
+        const isLikelySingle = COMMON_SINGLE_UNITS.includes(productToEdit.defaultUnit);
+        if (isLikelySingle) {
+          setUnitMode('single');
+          setSingleUnit(productToEdit.defaultUnit);
+          setUnitTiers([
+            { name: productToEdit.defaultUnit || 'Box', content: 1 },
+            { name: 'Strip', content: 10 },
+          ]);
+        } else {
+          setUnitMode('multi');
+          setUnitTiers([
+            { name: productToEdit.defaultUnit || 'Box', content: 1 },
+            { name: productToEdit.subUnitName || 'Strip', content: productToEdit.subUnitCount || 10 },
+          ]);
+          setSingleUnit('Botol');
+        }
+      }
     } else {
       setName('');
       setGenericName('');
       setCompany('');
       setPackaging('');
       setPackContent('');
-      setSubUnitCount(10);
-      setSubUnitName('lembar');
       setCategory(COMMON_CATEGORIES[0]);
-      setDefaultUnit('Box');
       setSku('');
       setDescription('');
       setHasInitialQuote(false);
@@ -95,20 +151,114 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       setQuoteDiscount('');
       setQuotePrice('');
       setQuoteNotes('');
+      setUnitMode('multi');
+      setSingleUnit('Botol');
+      setUnitTiers([
+        { name: 'Box', content: 1 },
+        { name: 'Strip', content: 10 },
+      ]);
     }
   }, [productToEdit, isOpen, suppliers]);
+
+  // Derived normalized units
+  const activeProductUnits: ProductUnitTier[] = useMemo(() => {
+    if (unitMode === 'single') {
+      const sName = singleUnit.trim() || 'Botol';
+      return [{ name: sName, content: 1, totalRatio: 1, level: 1 }];
+    }
+
+    let runningRatio = 1;
+    return unitTiers.map((t, idx) => {
+      const level = idx + 1;
+      const content = level === 1 ? 1 : Math.max(1, t.content || 1);
+      runningRatio = level === 1 ? 1 : runningRatio * content;
+      return {
+        name: (t.name || (level === 1 ? 'Box' : 'Satuan')).trim(),
+        content,
+        totalRatio: runningRatio,
+        level,
+      };
+    });
+  }, [unitMode, singleUnit, unitTiers]);
+
+  // Auto-computed pack content description
+  const autoPackContent = useMemo(() => {
+    if (unitMode === 'single') {
+      return `1 ${singleUnit.trim() || 'Botol'}`;
+    }
+    if (activeProductUnits.length === 2) {
+      return `1 ${activeProductUnits[0].name} = ${activeProductUnits[1].content} ${activeProductUnits[1].name}`;
+    }
+    if (activeProductUnits.length === 3) {
+      const u1 = activeProductUnits[0];
+      const u2 = activeProductUnits[1];
+      const u3 = activeProductUnits[2];
+      return `1 ${u1.name} = ${u2.content} ${u2.name} @ ${u3.content} ${u3.name} (Total: ${u3.totalRatio} ${u3.name})`;
+    }
+    if (activeProductUnits.length >= 4) {
+      const u1 = activeProductUnits[0];
+      const middle = activeProductUnits.slice(1).map(u => `${u.content} ${u.name}`).join(' @ ');
+      const last = activeProductUnits[activeProductUnits.length - 1];
+      return `1 ${u1.name} = ${middle} (Total: ${last.totalRatio} ${last.name})`;
+    }
+    return `1 ${activeProductUnits[0]?.name || 'Box'}`;
+  }, [unitMode, singleUnit, activeProductUnits]);
+
+  // Handler to add a tier (up to 4 tiers)
+  const handleAddTier = () => {
+    if (unitTiers.length >= 4) return;
+    const defaultNames = ['Box', 'Strip', 'Tablet', 'Biji'];
+    const defaultContents = [1, 10, 10, 1];
+    const nextIdx = unitTiers.length;
+    setUnitTiers((prev) => [
+      ...prev,
+      { 
+        name: defaultNames[nextIdx] || 'Satuan Eceran', 
+        content: defaultContents[nextIdx] || 10 
+      },
+    ]);
+  };
+
+  // Handler to remove tier
+  const handleRemoveTier = (idx: number) => {
+    if (unitTiers.length <= 2) return;
+    setUnitTiers((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleUpdateTierName = (idx: number, newName: string) => {
+    setUnitTiers((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], name: newName };
+      return copy;
+    });
+  };
+
+  const handleUpdateTierContent = (idx: number, newContent: number) => {
+    setUnitTiers((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], content: Math.max(1, newContent || 1) };
+      return copy;
+    });
+  };
 
   // Live calculation for initial quote
   const parsedHna = parseCurrencyInput(quoteHna);
   const parsedDisk = parseFloat(quoteDiscount) || 0;
   const parsedPrice = parseCurrencyInput(quotePrice);
 
+  const mainSubCount = unitMode === 'multi' && activeProductUnits.length > 1
+    ? activeProductUnits[1].totalRatio
+    : 1;
+  const mainSubName = unitMode === 'multi' && activeProductUnits.length > 1
+    ? activeProductUnits[1].name
+    : (activeProductUnits[0]?.name || 'Satuan');
+
   const pharmaCalc = calculatePharmaPricing({
     hna: parsedHna,
     discountPercent: parsedDisk,
     hargaJadiBoxInput: parsedPrice > 0 ? parsedPrice : undefined,
-    subUnitCount: subUnitCount > 0 ? subUnitCount : 10,
-    subUnitName: subUnitName || 'lembar',
+    subUnitCount: mainSubCount,
+    subUnitName: mainSubName,
   });
 
   const handleHnaChange = (val: string) => {
@@ -147,8 +297,19 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
-    const safeCount = subUnitCount > 0 ? subUnitCount : 10;
-    const computedPackContent = packContent.trim() || `1 ${defaultUnit} = ${safeCount} ${subUnitName || 'lembar'}`;
+    const mainUnit = unitMode === 'single'
+      ? (singleUnit.trim() || 'Botol')
+      : (unitTiers[0]?.name.trim() || 'Box');
+
+    const computedPackContent = packContent.trim() || autoPackContent;
+
+    const subCount = unitMode === 'multi' && activeProductUnits.length > 1
+      ? activeProductUnits[1].content
+      : 1;
+
+    const subName = unitMode === 'multi' && activeProductUnits.length > 1
+      ? activeProductUnits[1].name
+      : mainUnit;
 
     const productData: Partial<Product> = {
       name: name.trim(),
@@ -156,10 +317,12 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       company: company.trim() || undefined,
       packaging: packaging.trim() || undefined,
       packContent: computedPackContent,
-      subUnitCount: safeCount,
-      subUnitName: subUnitName.trim() || 'lembar',
+      hasMultiUnits: unitMode === 'multi',
+      units: activeProductUnits,
+      subUnitCount: subCount,
+      subUnitName: subName,
       category,
-      defaultUnit,
+      defaultUnit: mainUnit,
       sku: sku.trim() || undefined,
       description: description.trim() || undefined,
     };
@@ -167,12 +330,16 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     let initialQuote;
     const finalBoxPrice = parsedPrice > 0 ? parsedPrice : pharmaCalc.hargaJadiBox;
     if (!productToEdit && hasInitialQuote && quoteSupplier.trim() && finalBoxPrice > 0) {
+      const convertedSubPrice = unitMode === 'multi' && activeProductUnits.length > 1
+        ? Math.round(finalBoxPrice / activeProductUnits[1].totalRatio)
+        : finalBoxPrice;
+
       initialQuote = {
         supplierName: quoteSupplier.trim(),
         price: finalBoxPrice,
         hna: parsedHna > 0 ? parsedHna : finalBoxPrice,
         discountPercent: parsedDisk > 0 ? parsedDisk : 0,
-        pricePerSubUnit: Math.round(finalBoxPrice / safeCount),
+        pricePerSubUnit: convertedSubPrice,
         priceWithPpn: Math.round(finalBoxPrice * 1.11),
         notes: quoteNotes.trim() || undefined,
       };
@@ -298,48 +465,295 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               </div>
             </div>
 
-            {/* Konversi Pecahan */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
-                  Jumlah Satuan Kecil
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={subUnitCount}
-                  onChange={(e) => setSubUnitCount(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
-                />
+            {/* ======================================================== */}
+            {/* KONFIGURASI SATUAN PRODUK (1 SATUAN vs LEBIH DARI 1 SATUAN) */}
+            {/* ======================================================== */}
+            <div className="bg-slate-50/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200/70">
+                <div>
+                  <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-emerald-600" />
+                    <span>Konfigurasi Satuan & Konversi Harga</span>
+                  </label>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Tiap produk bisa memiliki hanya 1 satuan atau lebih dari 1 satuan dengan isi acuan konversi harga.
+                  </p>
+                </div>
+
+                {/* Mode Selector Toggle */}
+                <div className="inline-flex bg-white p-1 rounded-xl border border-slate-300 shadow-2xs self-start sm:self-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setUnitMode('single')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      unitMode === 'single'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>1 Satuan Saja</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUnitMode('multi')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      unitMode === 'multi'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>Multi-Satuan (&gt;1)</span>
+                  </button>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
-                  Nama Satuan Kecil
-                </label>
-                <input
-                  type="text"
-                  placeholder="lembar / strip / tablet / pcs"
-                  value={subUnitName}
-                  onChange={(e) => setSubUnitName(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
-                />
-              </div>
+              {/* OPSI 1: HANYA 1 SATUAN */}
+              {unitMode === 'single' && (
+                <div className="space-y-3">
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Nama Satuan Produk:
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Contoh: Botol, Tube, Pcs, Jerigen 1L, Vial"
+                        value={singleUnit}
+                        onChange={(e) => setSingleUnit(e.target.value)}
+                        className="flex-1 px-3 py-2 text-xs font-bold border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-900"
+                      />
+                    </div>
 
-              <div className="col-span-2 sm:col-span-1">
-                <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
-                  Satuan Pembelian Utama
-                </label>
-                <select
-                  value={defaultUnit}
-                  onChange={(e) => setDefaultUnit(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
-                >
-                  {COMMON_UNITS.map((u) => (
-                    <option key={u} value={u}>{u}</option>
-                  ))}
-                </select>
-              </div>
+                    {/* Chips Satuan Populer */}
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                      <span className="text-[10px] text-slate-400 font-medium mr-1">Pilihan Cepat:</span>
+                      {COMMON_SINGLE_UNITS.map((u) => (
+                        <button
+                          key={u}
+                          type="button"
+                          onClick={() => setSingleUnit(u)}
+                          className={`text-[10px] px-2 py-0.5 rounded-md border cursor-pointer transition-colors ${
+                            singleUnit === u
+                              ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                              : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {u}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2 p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900">
+                    <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] leading-relaxed">
+                      Produk ini menggunakan <strong>1 satuan ({singleUnit || 'Satuan'})</strong> tanpa pembagian pecahan. Harga beli dan harga jual apotek dihitung langsung per <strong>1 {singleUnit || 'Satuan'}</strong>.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* OPSI 2: LEBIH DARI 1 SATUAN (MULTI-SATUAN BERTINGKAT) */}
+              {unitMode === 'multi' && (
+                <div className="space-y-3">
+                  <div className="space-y-2.5">
+                    {/* Tier 1: Satuan Utama */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center font-bold">1</span>
+                          Satuan Utama (Pembelian Terbesar)
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-medium">Acuan Harga Beli Utama</span>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Contoh: Box, Dus, Karton"
+                        value={unitTiers[0]?.name || ''}
+                        onChange={(e) => handleUpdateTierName(0, e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white text-slate-900"
+                      />
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {COMMON_MAIN_UNITS.map((u) => (
+                          <button
+                            key={u}
+                            type="button"
+                            onClick={() => handleUpdateTierName(0, u)}
+                            className={`text-[10px] px-2 py-0.5 rounded-md border cursor-pointer transition-colors ${
+                              unitTiers[0]?.name === u
+                                ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {u}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Tier 2: Satuan Pecahan Pertama */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">2</span>
+                          Satuan Tingkat 2 (Pecahan Pertama)
+                        </span>
+                        <span className="text-[10px] text-blue-700 font-medium">
+                          1 {unitTiers[0]?.name || 'Box'} = {unitTiers[1]?.content || 10} {unitTiers[1]?.name || 'Strip'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Isi per {unitTiers[0]?.name || 'Box'}</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={unitTiers[1]?.content || 1}
+                            onChange={(e) => handleUpdateTierContent(1, parseInt(e.target.value) || 1)}
+                            className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Nama Satuan</label>
+                          <input
+                            type="text"
+                            placeholder="Strip / Lembar / Sachet"
+                            value={unitTiers[1]?.name || ''}
+                            onChange={(e) => handleUpdateTierName(1, e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white text-slate-900"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {COMMON_SUB_UNITS.map((u) => (
+                          <button
+                            key={u}
+                            type="button"
+                            onClick={() => handleUpdateTierName(1, u)}
+                            className={`text-[10px] px-2 py-0.5 rounded-md border cursor-pointer transition-colors ${
+                              unitTiers[1]?.name === u
+                                ? 'bg-blue-600 text-white border-blue-600 font-bold'
+                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {u}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Tier 3 & Seterusnya (Satuan Pecahan Berikutnya) */}
+                    {unitTiers.slice(2).map((tier, tierOffset) => {
+                      const tierIdx = tierOffset + 2;
+                      const levelNum = tierIdx + 1;
+                      const prevTier = unitTiers[tierIdx - 1];
+
+                      return (
+                        <div key={tierIdx} className="bg-white p-3 rounded-xl border border-purple-200/80 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                              <span className="w-4 h-4 rounded-full bg-purple-600 text-white text-[10px] flex items-center justify-center font-bold">
+                                {levelNum}
+                              </span>
+                              Satuan Tingkat {levelNum} ({tier.name || `Pecahan ${levelNum - 1}`})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTier(tierIdx)}
+                              className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-0.5 rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                              title={`Hapus satuan tingkat ${levelNum}`}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Hapus</span>
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] text-slate-500 mb-0.5">
+                                Isi per {prevTier?.name || 'Satuan Sebelumnya'}
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={tier.content || 1}
+                                onChange={(e) => handleUpdateTierContent(tierIdx, parseInt(e.target.value) || 1)}
+                                className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-slate-500 mb-0.5">Nama Satuan</label>
+                              <input
+                                type="text"
+                                placeholder="Tablet / Kapsul / Kaplet"
+                                value={tier.name || ''}
+                                onChange={(e) => handleUpdateTierName(tierIdx, e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white text-slate-900"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {COMMON_BASE_UNITS.map((u) => (
+                              <button
+                                key={u}
+                                type="button"
+                                onClick={() => handleUpdateTierName(tierIdx, u)}
+                                className={`text-[10px] px-2 py-0.5 rounded-md border cursor-pointer transition-colors ${
+                                  tier.name === u
+                                    ? 'bg-purple-600 text-white border-purple-600 font-bold'
+                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                {u}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Tombol Tambah Tingkat jika belum 4 tingkat */}
+                    {unitTiers.length < 4 && (
+                      <button
+                        type="button"
+                        onClick={handleAddTier}
+                        className="w-full py-2 border-2 border-dashed border-slate-300 hover:border-emerald-500 hover:bg-emerald-50/50 rounded-xl text-xs font-semibold text-slate-600 hover:text-emerald-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Tambah Satuan Pecahan Berikutnya (Contoh: {unitTiers.length === 2 ? 'Tablet/Kapsul per Strip' : 'Biji/Butir/Ml'})</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Formula Preview Banner & Live Calculation */}
+                  <div className="bg-emerald-950 text-white rounded-xl p-3 border border-emerald-500/30 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-emerald-300 uppercase tracking-wider text-[10px] flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        Acuan Konversi Harga Otomatis:
+                      </span>
+                    </div>
+                    <div className="text-xs font-mono font-bold text-emerald-100">
+                      {autoPackContent}
+                    </div>
+
+                    {/* Live price conversion sample */}
+                    {parsedPrice > 0 && (
+                      <div className="pt-2 border-t border-white/10 grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] font-mono">
+                        {activeProductUnits.map((u, uIdx) => (
+                          <div key={uIdx} className="bg-white/10 p-2 rounded-lg">
+                            <span className="block text-[9px] uppercase font-sans text-slate-300">
+                              Harga per {u.name}
+                            </span>
+                            <span className="font-black text-amber-300">
+                              {formatRupiah(Math.round(parsedPrice / u.totalRatio))}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -477,7 +891,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                       <Calculator className="w-3 h-3 text-amber-700" />
                       <span>Hasil Perhitungan Otomatis:</span>
                     </div>
-                    <div className="grid grid-cols-5 gap-1 text-center font-mono text-[11px] min-w-[340px]">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-center font-mono text-[11px] min-w-[340px]">
                       <div className="bg-slate-50 p-1.5 rounded border border-slate-200">
                         <span className="block text-[9px] font-sans font-semibold text-slate-500">HNA</span>
                         <span className="font-bold text-slate-700">{formatRupiah(pharmaCalc.hna)}</span>
@@ -486,12 +900,10 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                         <span className="block text-[9px] font-sans font-semibold text-emerald-700">DISK</span>
                         <span className="font-bold text-emerald-700">{pharmaCalc.discountPercent}%</span>
                       </div>
-                      <div className="bg-blue-50 p-1.5 rounded border border-blue-200">
-                        <span className="block text-[9px] font-sans font-semibold text-blue-700">HARGA JADI ({subUnitName || 'lembar'})</span>
-                        <span className="font-bold text-blue-800">{formatRupiah(pharmaCalc.hargaJadiLembar)}</span>
-                      </div>
                       <div className="bg-amber-100 p-1.5 rounded border border-amber-300">
-                        <span className="block text-[9px] font-sans font-bold text-amber-900">HARGA JADI (box)</span>
+                        <span className="block text-[9px] font-sans font-bold text-amber-900">
+                          HARGA JADI ({activeProductUnits[0]?.name || 'Utama'})
+                        </span>
                         <span className="font-bold text-amber-950">{formatRupiah(pharmaCalc.hargaJadiBox)}</span>
                       </div>
                       <div className="bg-purple-50 p-1.5 rounded border border-purple-200">
@@ -499,6 +911,18 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                         <span className="font-bold text-purple-800">{formatRupiah(pharmaCalc.hargaJadiPlusPpn)}</span>
                       </div>
                     </div>
+
+                    {/* Breakdown per Satuan Turunan jika multi-satuan */}
+                    {unitMode === 'multi' && activeProductUnits.length > 1 && (
+                      <div className="mt-2 pt-2 border-t border-amber-200 flex items-center gap-2 flex-wrap text-[11px]">
+                        <span className="text-[10px] font-bold text-slate-600">Konversi Satuan:</span>
+                        {activeProductUnits.slice(1).map((tier, tIdx) => (
+                          <span key={tIdx} className="bg-blue-50 text-blue-800 font-bold px-2 py-0.5 rounded border border-blue-200">
+                            ~{formatRupiah(Math.round((parsedPrice > 0 ? parsedPrice : pharmaCalc.hargaJadiBox) / tier.totalRatio))} / {tier.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div>

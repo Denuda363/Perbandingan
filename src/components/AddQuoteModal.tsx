@@ -25,7 +25,16 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { Product, Supplier, SupplierQuote, AppSettings, DEFAULT_APP_SETTINGS, DiscountType, MarginType } from '../types';
-import { calculateMarginFormula, formatRupiah, getProductPriceStats, parseCurrencyInput } from '../utils/formatters';
+import { 
+  calculateMarginFormula, 
+  formatRupiah, 
+  getProductPriceStats, 
+  parseCurrencyInput,
+  normalizeProductUnits,
+  isProductMultiUnit,
+  getProductUnitConversions,
+  formatProductUnitSummary
+} from '../utils/formatters';
 
 interface AddQuoteModalProps {
   isOpen: boolean;
@@ -89,8 +98,16 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
     return products.find((p) => p.id === productId) || selectedProduct || products[0] || null;
   }, [products, productId, selectedProduct]);
 
-  const subCount = activeProduct?.subUnitCount || 10;
-  const subName = activeProduct?.subUnitName || 'lembar';
+  const productUnits = useMemo(() => {
+    return normalizeProductUnits(activeProduct);
+  }, [activeProduct]);
+
+  const isMulti = useMemo(() => {
+    return isProductMultiUnit(activeProduct);
+  }, [activeProduct]);
+
+  const subCount = isMulti && productUnits.length > 1 ? productUnits[1].totalRatio : 1;
+  const subName = isMulti && productUnits.length > 1 ? productUnits[1].name : (productUnits[0]?.name || 'Satuan');
 
   useEffect(() => {
     if (selectedProduct) {
@@ -219,6 +236,15 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
     ? (parsedModal >= 0 ? formulaCalc.netCostAfterDiscounts : 0)
     : parsedDirect;
 
+  // Multi-tier unit conversions for the active product
+  const unitConversions = useMemo(() => {
+    return getProductUnitConversions(
+      activeProduct,
+      formulaCalc.netCostAfterDiscounts,
+      formulaCalc.sellingPrice
+    );
+  }, [activeProduct, formulaCalc.netCostAfterDiscounts, formulaCalc.sellingPrice]);
+
   // Filter products for search selector
   const filteredProducts = useMemo(() => {
     const q = productSearchQuery.trim().toLowerCase();
@@ -272,21 +298,34 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
 
     // Nilai modal dasar yang dicantumkan langsung dipakai
     const effectivePrice = priceInputMode === 'formula'
-      ? (parsedModal >= 0 ? formulaCalc.netCostAfterDiscounts : 0)
+      ? (parsedModal > 0 ? formulaCalc.netCostAfterDiscounts : parsedDirect)
       : parsedDirect;
 
-    if (effectivePrice <= 0 && parsedModal <= 0 && parsedDirect <= 0) return;
+    const finalBoxPrice = effectivePrice > 0 
+      ? effectivePrice 
+      : (parsedModal > 0 ? parsedModal : parsedDirect);
+
+    if (finalBoxPrice <= 0 && !modalCost.trim() && !directPrice.trim()) return;
 
     const matchedSupplier = suppliers.find(
       (s) => s.name.toLowerCase() === supplierName.trim().toLowerCase()
     );
 
+    const mainTierRatio = productUnits[1]?.totalRatio || 1;
+    const finalPricePerSub = isMulti && productUnits.length > 1
+      ? Math.round(finalBoxPrice / mainTierRatio)
+      : finalBoxPrice;
+
+    const finalSellingPerSub = isMulti && productUnits.length > 1
+      ? Math.round(formulaCalc.sellingPrice / mainTierRatio)
+      : formulaCalc.sellingPrice;
+
     const quoteData: Partial<SupplierQuote> = {
       id: quoteToEdit ? quoteToEdit.id : `q-${Date.now()}`,
       supplierId: matchedSupplier ? matchedSupplier.id : `sup-${Date.now()}`,
       supplierName: supplierName.trim(),
-      price: effectivePrice > 0 ? effectivePrice : (parsedModal > 0 ? parsedModal : parsedDirect), // Modal bersih setelah diskon
-      hna: parsedModal > 0 ? parsedModal : (effectivePrice > 0 ? effectivePrice : parsedDirect),
+      price: finalBoxPrice, // Modal bersih setelah diskon
+      hna: parsedModal > 0 ? parsedModal : finalBoxPrice,
       discount1Type,
       discount1Value: parsedD1Val,
       discountPercent: discount1Type === 'percent' ? parsedD1Val : 0,
@@ -298,8 +337,8 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
       marginValue: parsedMarginVal,
       marginAmount: formulaCalc.marginAmount,
       sellingPrice: formulaCalc.sellingPrice,
-      pricePerSubUnit: formulaCalc.costPerSubUnit,
-      sellingPricePerSubUnit: formulaCalc.sellingPricePerSubUnit,
+      pricePerSubUnit: finalPricePerSub,
+      sellingPricePerSubUnit: finalSellingPerSub,
       unit: unit || activeProduct?.defaultUnit || 'Box',
       moq: parseInt(moq) || 1,
       leadTimeDays: parseInt(leadTimeDays) || 0,
@@ -1043,7 +1082,9 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
                     {formatRupiah(formulaCalc.netCostAfterDiscounts)}
                   </span>
                   <span className="block text-[10px] text-slate-400">
-                    ~{formatRupiah(formulaCalc.costPerSubUnit)}/{subName}
+                    {isMulti 
+                      ? `~${formatRupiah(formulaCalc.costPerSubUnit)}/${subName}`
+                      : `per ${productUnits[0]?.name || 'Satuan'}`}
                   </span>
                 </div>
 
@@ -1082,10 +1123,57 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
                     {formatRupiah(formulaCalc.sellingPrice)}
                   </span>
                   <span className="block text-[10px] text-amber-200/90 font-bold">
-                    ~{formatRupiah(formulaCalc.sellingPricePerSubUnit)}/{subName}
+                    {isMulti 
+                      ? `~${formatRupiah(formulaCalc.sellingPricePerSubUnit)}/${subName}`
+                      : `per ${productUnits[0]?.name || 'Satuan'}`}
                   </span>
                 </div>
               </div>
+
+              {/* Rincian Multi-Satuan & Konversi Harga Otomatis */}
+              {isMulti && unitConversions.length > 1 ? (
+                <div className="p-2.5 bg-black/40 rounded-xl border border-white/10 space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1">
+                      <Layers className="w-3 h-3 text-amber-400" />
+                      Acuan Konversi Harga Otomatis per Satuan:
+                    </span>
+                    <span className="text-slate-400 font-mono text-[9px]">
+                      {activeProduct?.packContent || formatProductUnitSummary(activeProduct)}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[11px] font-mono">
+                    {unitConversions.map((conv, cIdx) => (
+                      <div key={cIdx} className="bg-white/5 p-2 rounded-lg border border-white/10">
+                        <div className="flex items-center justify-between text-[10px] font-sans font-bold text-slate-200">
+                          <span>{conv.name}</span>
+                          <span className="text-[9px] text-slate-400 font-mono">
+                            {conv.isBase ? 'Utama' : `isi ${conv.content}`}
+                          </span>
+                        </div>
+                        <div className="text-white mt-1">
+                          <span className="text-[9px] font-sans text-slate-400 block">Modal:</span>
+                          <strong className="text-amber-300">{formatRupiah(conv.costPrice)}</strong>
+                        </div>
+                        <div className="text-emerald-300 mt-0.5">
+                          <span className="text-[9px] font-sans text-slate-400 block">Jual:</span>
+                          <strong>{formatRupiah(conv.sellingPrice)}</strong>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2 bg-blue-950/40 rounded-lg border border-blue-500/30 flex items-center justify-between text-[11px] text-blue-200">
+                  <span className="font-medium">
+                    Produk 1 Satuan: <strong>{productUnits[0]?.name || 'Satuan'}</strong>
+                  </span>
+                  <span className="text-[10px] text-blue-300">
+                    Harga modal & jual berlaku langsung per 1 {productUnits[0]?.name || 'Satuan'}
+                  </span>
+                </div>
+              )}
 
               {/* Equation banner */}
               <div className="p-2.5 bg-black/40 rounded-lg border border-white/10 text-[11px] font-mono text-emerald-300/90 overflow-x-auto whitespace-nowrap">
@@ -1191,7 +1279,7 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={finalEffectiveNetPrice <= 0 || !supplierName.trim()}
+              disabled={!supplierName.trim() || (!modalCost.trim() && !directPrice.trim() && finalEffectiveNetPrice <= 0)}
               className="flex-1 sm:flex-initial px-5 py-2.5 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-xl shadow-md shadow-emerald-200 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
             >
               {quoteToEdit ? 'Simpan Perubahan Harga' : 'Simpan Penawaran'}
