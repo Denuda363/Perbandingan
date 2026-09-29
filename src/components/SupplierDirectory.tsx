@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Building2, 
   Phone, 
@@ -13,10 +13,12 @@ import {
   CheckCircle,
   FileText,
   FileSpreadsheet,
-  Download
+  Download,
+  Search
 } from 'lucide-react';
 import { Supplier, Product } from '../types';
 import { getProductPriceStats } from '../utils/formatters';
+import { Pagination } from './Pagination';
 
 interface SupplierDirectoryProps {
   suppliers: Supplier[];
@@ -63,8 +65,36 @@ export const SupplierDirectory: React.FC<SupplierDirectoryProps> = ({
     };
   });
 
+  // Search & Pagination state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  // Filter suppliers by search query
+  const filteredSupplierStats = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return supplierStats;
+    return supplierStats.filter(({ supplier }) =>
+      supplier.name.toLowerCase().includes(q) ||
+      supplier.contactPerson?.toLowerCase().includes(q) ||
+      supplier.phone?.includes(q) ||
+      supplier.email?.toLowerCase().includes(q) ||
+      supplier.address?.toLowerCase().includes(q)
+    );
+  }, [supplierStats, searchQuery]);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery]);
+
+  // Paginated suppliers
+  const paginatedSuppliers = pageSize <= 0
+    ? filteredSupplierStats
+    : filteredSupplierStats.slice((page - 1) * pageSize, page * pageSize);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       
       {/* Header */}
       <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -102,9 +132,31 @@ export const SupplierDirectory: React.FC<SupplierDirectoryProps> = ({
         </div>
       </div>
 
+      {/* Search and count bar */}
+      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari nama supplier, kontak PIC, atau alamat..."
+            className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+          />
+        </div>
+        <span className="text-xs text-slate-500 font-medium whitespace-nowrap">
+          Total: <strong className="text-slate-900 font-bold">{filteredSupplierStats.length}</strong> supplier
+        </span>
+      </div>
+
       {/* Supplier Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {supplierStats.map(({ supplier, productCount, cheapestCount, winRate }) => {
+      {paginatedSuppliers.length === 0 ? (
+        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-xs">
+          Tidak ada supplier yang ditemukan untuk pencarian "{searchQuery}".
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {paginatedSuppliers.map(({ supplier, productCount, cheapestCount, winRate }) => {
           return (
             <div
               key={supplier.id}
@@ -223,8 +275,19 @@ export const SupplierDirectory: React.FC<SupplierDirectoryProps> = ({
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
 
+      {/* Pagination Controls */}
+      <Pagination
+        currentPage={page}
+        totalItems={filteredSupplierStats.length}
+        pageSize={pageSize}
+        pageSizeOptions={[10, 20, 30, 50, 100, 'all']}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        itemLabel="supplier"
+      />
     </div>
   );
 };

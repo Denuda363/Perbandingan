@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Product, Supplier, AppSettings, DEFAULT_APP_SETTINGS, DiscountType, MarginType } from '../types';
 import { formatRupiah, getProductPriceStats, calculateSellingPrice, calculateMarginFormula } from '../utils/formatters';
+import { Pagination } from './Pagination';
 
 interface SimulationCalculatorProps {
   products: Product[];
@@ -158,6 +159,14 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
     });
     setQuantities(reset);
   };
+
+  // Pagination state for basket list
+  const [basketPage, setBasketPage] = useState(1);
+  const [basketPageSize, setBasketPageSize] = useState(20);
+
+  const paginatedBasketProducts = basketPageSize <= 0
+    ? products
+    : products.slice((basketPage - 1) * basketPageSize, basketPage * basketPageSize);
 
   const handleSelectAll = (qty: number) => {
     const all: Record<string, number> = {};
@@ -906,7 +915,7 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
 
           {/* Product Items in Basket */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden divide-y divide-slate-150">
-            {products.map((p) => {
+            {paginatedBasketProducts.map((p) => {
               const qty = quantities[p.id] || 0;
               const pStats = getProductPriceStats(p);
               const bestQuote = pStats.cheapestQuote;
@@ -970,6 +979,17 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
               );
             })}
           </div>
+
+          {/* Pagination Controls for Basket List */}
+          <Pagination
+            currentPage={basketPage}
+            totalItems={products.length}
+            pageSize={basketPageSize}
+            pageSizeOptions={[10, 20, 30, 50, 100, 'all']}
+            onPageChange={setBasketPage}
+            onPageSizeChange={setBasketPageSize}
+            itemLabel="produk PO"
+          />
 
           {/* Results Comparison for Multi-Item PO */}
           {selectedProducts.length > 0 && (

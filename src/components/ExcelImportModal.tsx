@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   X, 
   Upload, 
@@ -41,6 +41,7 @@ import {
 } from '../utils/excelUtils';
 import { formatRupiah, calculateSellingPrice } from '../utils/formatters';
 import { AppSettings, DEFAULT_APP_SETTINGS } from '../types';
+import { Pagination } from './Pagination';
 
 interface ExcelImportModalProps {
   isOpen: boolean;
@@ -171,6 +172,26 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
     return list;
   }, [groupedProducts, comparisonSearchQuery, comparisonFilter]);
+
+  // Pagination for Excel Import Preview
+  const [modalPage, setModalPage] = useState(1);
+  const [modalPageSize, setModalPageSize] = useState(20);
+
+  useEffect(() => {
+    setModalPage(1);
+  }, [comparisonSearchQuery, comparisonFilter, previewTab]);
+
+  const paginatedGroupedProducts = modalPageSize <= 0
+    ? filteredGroupedProducts
+    : filteredGroupedProducts.slice((modalPage - 1) * modalPageSize, modalPage * modalPageSize);
+
+  const paginatedQuotes = modalPageSize <= 0
+    ? (parseResult?.parsedQuotes || [])
+    : (parseResult?.parsedQuotes || []).slice((modalPage - 1) * modalPageSize, modalPage * modalPageSize);
+
+  const paginatedSuppliers = modalPageSize <= 0
+    ? (parseResult?.parsedSuppliers || [])
+    : (parseResult?.parsedSuppliers || []).slice((modalPage - 1) * modalPageSize, modalPage * modalPageSize);
 
   // Copy recommendation summary to clipboard
   const handleCopySummary = () => {
@@ -732,7 +753,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                                   <p className="text-xs text-slate-500">Tidak ada produk yang cocok dengan pencarian filter.</p>
                                 </div>
                               ) : (
-                                filteredGroupedProducts.map((p, idx) => {
+                                paginatedGroupedProducts.map((p, idx) => {
                                   const bestQuote = p.cheapestQuote;
                                   const sellingPrice = bestQuote ? calculateSellingPrice(bestQuote.price, settings).sellingPrice : 0;
                                   const subPrice = bestQuote ? (bestQuote.pricePerSubUnit || Math.round(bestQuote.price / (p.subUnitCount || 10))) : 0;
@@ -878,8 +899,8 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
                         {/* PREVIEW TAB 2: RAW PRODUCTS CARDS (Mobile First) */}
                         {previewTab === 'products' && hasQuotes && (
-                          <div className="p-2.5 sm:p-3 space-y-2 max-h-56 sm:max-h-64 overflow-y-auto divide-y divide-slate-100">
-                            {parseResult.parsedQuotes.slice(0, 15).map((q, idx) => (
+                          <div className="p-2.5 sm:p-3 space-y-2 max-h-72 overflow-y-auto divide-y divide-slate-100">
+                            {paginatedQuotes.map((q, idx) => (
                               <div key={idx} className="pt-2 first:pt-0">
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="min-w-0 flex-1">
@@ -918,20 +939,13 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                                 )}
                               </div>
                             ))}
-                            {parseResult.parsedQuotes.length > 15 && (
-                              <div className="pt-2 text-center">
-                                <span className="inline-block text-[11px] text-slate-500 bg-slate-100 px-3 py-1 rounded-full font-medium">
-                                  + {parseResult.parsedQuotes.length - 15} data produk lainnya siap diimpor
-                                </span>
-                              </div>
-                            )}
                           </div>
                         )}
 
                         {/* PREVIEW TAB 3: SUPPLIERS CARDS */}
                         {previewTab === 'suppliers' && hasSuppliers && (
-                          <div className="p-2.5 sm:p-3 space-y-2 max-h-56 sm:max-h-64 overflow-y-auto divide-y divide-slate-100">
-                            {parseResult.parsedSuppliers.slice(0, 15).map((s, idx) => (
+                          <div className="p-2.5 sm:p-3 space-y-2 max-h-72 overflow-y-auto divide-y divide-slate-100">
+                            {paginatedSuppliers.map((s, idx) => (
                               <div key={idx} className="pt-2 first:pt-0 flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-1.5">
@@ -955,6 +969,29 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                           </div>
                         )}
                       </div>
+
+                      {/* Pagination for Modal Preview */}
+                      <Pagination
+                        currentPage={modalPage}
+                        totalItems={
+                          previewTab === 'comparison'
+                            ? filteredGroupedProducts.length
+                            : previewTab === 'products'
+                            ? parseResult.parsedQuotes.length
+                            : parseResult.parsedSuppliers.length
+                        }
+                        pageSize={modalPageSize}
+                        pageSizeOptions={[10, 20, 30, 50, 100, 'all']}
+                        onPageChange={setModalPage}
+                        onPageSizeChange={setModalPageSize}
+                        itemLabel={
+                          previewTab === 'comparison'
+                            ? 'produk komparasi'
+                            : previewTab === 'products'
+                            ? 'baris produk'
+                            : 'supplier'
+                        }
+                      />
 
                       {/* Mobile Import Mode Selection */}
                       <div className="space-y-2 pt-1">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Award, 
   ArrowUpDown, 
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Product, Supplier, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
 import { formatRupiah, getProductPriceStats, calculateSellingPrice } from '../utils/formatters';
+import { Pagination } from './Pagination';
 
 interface MatrixViewProps {
   products: Product[];
@@ -34,6 +35,8 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
   const [sortBy, setSortBy] = useState<'savings' | 'name'>('savings');
   const [mobileViewStyle, setMobileViewStyle] = useState<'card' | 'table'>('card');
   const [showSellingPrice, setShowSellingPrice] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   // Filter and sort products
   let displayProducts = products.filter((p) => {
@@ -51,6 +54,16 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
     }
     return a.name.localeCompare(b.name);
   });
+
+  // Reset page when filter or sorting changes
+  useEffect(() => {
+    setPage(1);
+  }, [filterMultiSupplierOnly, sortBy]);
+
+  // Paginated product slice
+  const paginatedProducts = pageSize <= 0
+    ? displayProducts
+    : displayProducts.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
@@ -148,7 +161,7 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
             Tidak ada produk yang sesuai filter.
           </div>
         ) : (
-          displayProducts.map((product) => {
+          paginatedProducts.map((product) => {
             const stats = getProductPriceStats(product);
             const subCount = product.subUnitCount || 10;
             const subName = product.subUnitName || 'lembar';
@@ -306,7 +319,7 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                 </td>
               </tr>
             ) : (
-              displayProducts.map((product) => {
+              paginatedProducts.map((product) => {
                 const stats = getProductPriceStats(product);
 
                 return (
@@ -458,15 +471,27 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
         </table>
       </div>
 
-      {/* Table Footer */}
-      <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-3 h-3 rounded bg-emerald-100 border border-emerald-300" />
-          <span>Sorotan Hijau = Penawaran harga terbaik (Termurah)</span>
+      {/* Table Footer with Pagination */}
+      <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex flex-col gap-3">
+        <Pagination
+          currentPage={page}
+          totalItems={displayProducts.length}
+          pageSize={pageSize}
+          pageSizeOptions={[10, 20, 30, 50, 100, 'all']}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="produk matriks"
+        />
+
+        <div className="flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2 pt-1 border-t border-slate-200/60">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-3 h-3 rounded bg-emerald-100 border border-emerald-300" />
+            <span>Sorotan Hijau = Penawaran harga terbaik (Termurah)</span>
+          </div>
+          <p>
+            Total {displayProducts.length} dari {products.length} produk di katalog
+          </p>
         </div>
-        <p>
-          Menampilkan {displayProducts.length} dari {products.length} produk
-        </p>
       </div>
     </div>
   );

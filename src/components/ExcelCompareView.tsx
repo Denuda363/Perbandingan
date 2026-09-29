@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   FileSpreadsheet,
   Upload,
@@ -37,6 +37,7 @@ import {
 } from '../utils/excelUtils';
 import { formatRupiah, calculateSellingPrice } from '../utils/formatters';
 import { AppSettings, DEFAULT_APP_SETTINGS } from '../types';
+import { Pagination } from './Pagination';
 
 interface ExcelCompareViewProps {
   settings?: AppSettings;
@@ -233,6 +234,25 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
       return 0;
     });
   }, [groupedProducts, searchQuery, selectedCategory, filterType, sortBy]);
+
+  // Pagination state for Excel Compare View
+  const [comparePage, setComparePage] = useState(1);
+  const [comparePageSize, setComparePageSize] = useState(20);
+
+  // Reset page when filtering or mode changes
+  useEffect(() => {
+    setComparePage(1);
+  }, [searchQuery, selectedCategory, filterType, sortBy, displayMode]);
+
+  // Paginated product comparison list
+  const paginatedFilteredProducts = comparePageSize <= 0
+    ? filteredProducts
+    : filteredProducts.slice((comparePage - 1) * comparePageSize, comparePage * comparePageSize);
+
+  // Paginated raw quotes list
+  const paginatedRawQuotes = comparePageSize <= 0
+    ? (parseResult?.parsedQuotes || [])
+    : (parseResult?.parsedQuotes || []).slice((comparePage - 1) * comparePageSize, comparePage * comparePageSize);
 
   // Copy recommendation summary
   const handleCopySummary = () => {
@@ -759,7 +779,7 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                   <p className="text-xs text-slate-500">Coba ubah kata kunci pencarian atau kategori yang dipilih.</p>
                 </div>
               ) : (
-                filteredProducts.map((p, pIdx) => {
+                paginatedFilteredProducts.map((p, pIdx) => {
                   const best = p.cheapestQuote;
                   const highest = p.highestQuote;
                   const bestSelling = best ? calculateSellingPrice(best.price, settings).sellingPrice : 0;
@@ -956,7 +976,7 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredProducts.map((p, idx) => {
+                    {paginatedFilteredProducts.map((p, idx) => {
                       const best = p.cheapestQuote;
                       const selling = best ? calculateSellingPrice(best.price, settings).sellingPrice : 0;
 
@@ -1034,7 +1054,7 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                 </span>
               </div>
               <div className="max-h-96 overflow-y-auto divide-y divide-slate-100">
-                {parseResult.parsedQuotes.map((q, idx) => (
+                {paginatedRawQuotes.map((q, idx) => (
                   <div key={idx} className="py-2 flex items-center justify-between text-xs gap-3">
                     <div className="min-w-0">
                       <p className="font-bold text-slate-900 truncate">
@@ -1056,6 +1076,17 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
               </div>
             </div>
           )}
+
+          {/* Pagination Controls for Compare Views */}
+          <Pagination
+            currentPage={comparePage}
+            totalItems={displayMode === 'raw' ? parseResult.parsedQuotes.length : filteredProducts.length}
+            pageSize={comparePageSize}
+            pageSizeOptions={[10, 20, 30, 50, 100, 'all']}
+            onPageChange={setComparePage}
+            onPageSizeChange={setComparePageSize}
+            itemLabel={displayMode === 'raw' ? 'baris penawaran' : 'produk komparasi'}
+          />
 
           {/* Bottom Confirmation Card: Apply to Main Catalog */}
           <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-slate-50 border border-emerald-300 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">

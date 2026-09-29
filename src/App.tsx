@@ -37,6 +37,7 @@ import { PWAInstallModal } from './components/PWAInstallModal';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { SettingsModal } from './components/SettingsModal';
+import { Pagination } from './components/Pagination';
 import {
   subscribeToProducts,
   subscribeToSuppliers,
@@ -96,6 +97,8 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
   const [sortBy, setSortBy] = useState<SortOption>('savings-desc');
   const [filterMultipleVendorsOnly, setFilterMultipleVendorsOnly] = useState(false);
+  const [productPage, setProductPage] = useState(1);
+  const [productPageSize, setProductPageSize] = useState(20);
 
   // Modals state
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -109,6 +112,7 @@ export default function App() {
   const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isMobileAddSheetOpen, setIsMobileAddSheetOpen] = useState(false);
   const [importBannerInfo, setImportBannerInfo] = useState<{
     productsCount: number;
     quotesCount: number;
@@ -270,6 +274,16 @@ export default function App() {
         return 0;
     }
   });
+
+  // Reset product pagination when filters or sort change
+  useEffect(() => {
+    setProductPage(1);
+  }, [searchQuery, selectedCategory, filterMultipleVendorsOnly, sortBy]);
+
+  // Paginated product list for card view
+  const paginatedProducts = productPageSize <= 0
+    ? sortedProducts
+    : sortedProducts.slice((productPage - 1) * productPageSize, productPage * productPageSize);
 
   // Handlers for Products
   const handleSaveProduct = (
@@ -897,33 +911,46 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {sortedProducts.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    settings={settings}
-                    onAddQuote={(p) => {
-                      setQuoteSelectedProduct(p);
-                      setQuoteToEdit(null);
-                      setIsQuoteModalOpen(true);
-                    }}
-                    onEditQuote={(p, q) => {
-                      setQuoteSelectedProduct(p);
-                      setQuoteToEdit(q);
-                      setIsQuoteModalOpen(true);
-                    }}
-                    onDeleteQuote={handleDeleteQuote}
-                    onEditProduct={(p) => {
-                      setProductToEdit(p);
-                      setIsProductModalOpen(true);
-                    }}
-                    onDeleteProduct={handleDeleteProduct}
-                    onSimulateOrder={(productId) => {
-                      setCurrentView('simulation');
-                    }}
-                  />
-                ))}
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {paginatedProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      settings={settings}
+                      onAddQuote={(p) => {
+                        setQuoteSelectedProduct(p);
+                        setQuoteToEdit(null);
+                        setIsQuoteModalOpen(true);
+                      }}
+                      onEditQuote={(p, q) => {
+                        setQuoteSelectedProduct(p);
+                        setQuoteToEdit(q);
+                        setIsQuoteModalOpen(true);
+                      }}
+                      onDeleteQuote={handleDeleteQuote}
+                      onEditProduct={(p) => {
+                        setProductToEdit(p);
+                        setIsProductModalOpen(true);
+                      }}
+                      onDeleteProduct={handleDeleteProduct}
+                      onSimulateOrder={(productId) => {
+                        setCurrentView('simulation');
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Pagination Controls */}
+                <Pagination
+                  currentPage={productPage}
+                  totalItems={sortedProducts.length}
+                  pageSize={productPageSize}
+                  pageSizeOptions={[10, 20, 30, 50, 100, 'all']}
+                  onPageChange={setProductPage}
+                  onPageSizeChange={setProductPageSize}
+                  itemLabel="produk"
+                />
               </div>
             )}
 

@@ -75,7 +75,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
           
           {/* Logo & Brand */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink">
             <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-sm shadow-emerald-200 border border-emerald-500/30 shrink-0 bg-emerald-700">
               <img
                 src="/pwa-192x192.png"
@@ -84,16 +84,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                 referrerPolicy="no-referrer"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2">
-                <span className="font-bold text-sm sm:text-lg text-slate-900 tracking-tight leading-none">
+                <span className="font-bold text-sm sm:text-lg text-slate-900 tracking-tight leading-none truncate">
                   HargaVendor
                 </span>
-                <span className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-1.5 sm:px-2 py-0.5 rounded-full hidden xs:inline-block">
+                <span className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-1.5 sm:px-2 py-0.5 rounded-full hidden xs:inline-block shrink-0">
                   Komparator
                 </span>
               </div>
-              <p className="text-[10px] sm:text-[11px] text-slate-500 hidden sm:block mt-0.5">
+              <p className="text-[10px] sm:text-[11px] text-slate-500 hidden sm:block mt-0.5 truncate">
                 Perbandingan Harga Multi-Supplier
               </p>
             </div>
@@ -125,43 +125,30 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {/* Realtime Cloud Status */}
             <CloudSyncStatus status={syncStatus} />
 
-            {/* Install PWA Button */}
-            {onOpenInstallModal && (
-              <button
-                id="btn-nav-install-pwa"
-                onClick={onOpenInstallModal}
-                title="Pasang aplikasi di Smartphone / Layar Utama"
-                className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 text-xs font-bold text-emerald-950 bg-emerald-100/90 hover:bg-emerald-200 border border-emerald-300/80 rounded-lg transition-all cursor-pointer shadow-2xs group"
-              >
-                <Smartphone className="w-3.5 h-3.5 text-emerald-700 group-hover:scale-110 transition-transform shrink-0" />
-                <span className="hidden sm:inline">Pasang di HP</span>
-                <span className="sm:hidden">App</span>
-              </button>
-            )}
-
-            {/* Mobile Direct Import Excel Button */}
+            {/* Mobile Quick Import Excel Button */}
             <button
               id="btn-mobile-import-direct"
               onClick={onOpenImportExcel}
-              className="sm:hidden inline-flex items-center gap-1 px-2.5 py-2 text-xs font-bold text-emerald-900 bg-emerald-50 active:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors cursor-pointer shadow-2xs h-9"
-              title="Import Data Produk & Supplier dari Excel"
+              className="sm:hidden inline-flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs font-bold text-emerald-900 bg-emerald-50 active:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors cursor-pointer shadow-2xs h-9 min-w-[36px]"
+              title="Import Data Excel"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-              <span>Import</span>
+              <span className="hidden xs:inline">Import</span>
             </button>
 
-            {/* Mobile More Excel Actions Button (Template & Export) */}
+            {/* Mobile Menu & Tools Bottom Sheet Trigger */}
             <button
               id="btn-mobile-excel"
               onClick={() => setIsMobileExcelSheetOpen(true)}
-              className="sm:hidden inline-flex items-center justify-center w-9 h-9 text-slate-600 bg-white hover:bg-slate-100 active:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer h-9"
-              title="Menu Excel & Pengaturan"
+              className="sm:hidden inline-flex items-center justify-center w-9 h-9 text-slate-700 bg-slate-100 active:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+              title="Menu Alat & Excel"
+              aria-label="Menu Alat & Excel"
             >
-              <Download className="w-4 h-4 text-slate-600" />
+              <Download className="w-4 h-4 text-slate-700" />
             </button>
 
             {/* Mobile Settings Button */}
@@ -169,10 +156,24 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 id="btn-mobile-settings"
                 onClick={onOpenSettings}
-                className="sm:hidden inline-flex items-center justify-center w-9 h-9 text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 border border-slate-200 rounded-lg transition-colors cursor-pointer h-9"
+                className="sm:hidden inline-flex items-center justify-center w-9 h-9 text-slate-700 bg-slate-100 active:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer"
                 title={`Pengaturan PPN (${settings?.ppnPercent || 11}%) & Margin (${settings?.marginPercent || 25}%)`}
+                aria-label="Pengaturan"
               >
                 <Settings className="w-4 h-4 text-slate-700" />
+              </button>
+            )}
+
+            {/* Install PWA Button (Tablet & Desktop) */}
+            {onOpenInstallModal && (
+              <button
+                id="btn-nav-install-pwa"
+                onClick={onOpenInstallModal}
+                title="Pasang aplikasi di Smartphone / Layar Utama"
+                className="hidden sm:inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-bold text-emerald-950 bg-emerald-100/90 hover:bg-emerald-200 border border-emerald-300/80 rounded-lg transition-all cursor-pointer shadow-2xs group"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-emerald-700 group-hover:scale-110 transition-transform shrink-0" />
+                <span className="hidden sm:inline">Pasang di HP</span>
               </button>
             )}
 
@@ -399,19 +400,23 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Mobile Excel Bottom Sheet Modal */}
       {isMobileExcelSheetOpen && (
-        <div className="sm:hidden fixed inset-0 z-50 flex items-end bg-slate-900/60 backdrop-blur-xs">
+        <div 
+          className="sm:hidden fixed inset-0 z-50 flex items-end bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setIsMobileExcelSheetOpen(false)}
+        >
           <div 
-            className="w-full bg-white rounded-t-2xl p-5 shadow-2xl border-t border-slate-200 animate-in slide-in-from-bottom duration-200"
+            className="w-full bg-white rounded-t-2xl p-5 shadow-2xl border-t border-slate-200 animate-in slide-in-from-bottom duration-200 max-h-[85vh] overflow-y-auto pb-safe"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-                <h3 className="font-bold text-slate-900 text-sm">Kelola Data Excel</h3>
+                <h3 className="font-bold text-slate-900 text-sm">Alat, Excel & Pengaturan</h3>
               </div>
               <button 
                 onClick={() => setIsMobileExcelSheetOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 rounded-lg active:bg-slate-100"
+                aria-label="Tutup menu"
               >
                 <X className="w-5 h-5" />
               </button>
