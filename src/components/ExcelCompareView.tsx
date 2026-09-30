@@ -22,33 +22,48 @@ import {
   Zap,
   Building2,
   Layers,
-  ArrowUpDown
+  ArrowUpDown,
+  ShoppingCart,
+  PackageCheck,
+  Plus,
+  Minus,
+  Link2,
+  Calculator,
+  Boxes
 } from 'lucide-react';
 import {
   parseExcelUpload,
   getSampleExcelData,
+  getSampleOrderRequirementData,
   groupImportedQuotesByProduct,
   downloadCompleteExcelTemplate,
   downloadProductOnlyTemplate,
   downloadSupplierOnlyTemplate,
+  downloadOrderRequirementTemplate,
   exportComparisonReportToExcel,
   ImportedProductComparison,
   ExcelParseResult
 } from '../utils/excelUtils';
 import { formatRupiah, calculateSellingPrice } from '../utils/formatters';
-import { AppSettings, DEFAULT_APP_SETTINGS } from '../types';
+import { Product, Supplier, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
 import { Pagination } from './Pagination';
 
 interface ExcelCompareViewProps {
+  products?: Product[];
+  suppliers?: Supplier[];
   settings?: AppSettings;
   onConfirmImport: (parsedResult: ExcelParseResult, importMode: 'merge' | 'overwrite') => void;
   onNavigateToMatrix?: () => void;
+  onNavigateToSimulation?: () => void;
 }
 
 export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
+  products = [],
+  suppliers = [],
   settings = DEFAULT_APP_SETTINGS,
   onConfirmImport,
   onNavigateToMatrix,
+  onNavigateToSimulation,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -56,19 +71,25 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
   const [isParsing, setIsParsing] = useState(false);
   const [parseResult, setParseResult] = useState<ExcelParseResult | null>(null);
   const [isSampleLoaded, setIsSampleLoaded] = useState(false);
+  const [sampleKind, setSampleKind] = useState<'full' | 'requirement' | null>(null);
   const [dragActive, setDragActive] = useState(false);
 
   // Tab & View Controls
   const [displayMode, setDisplayMode] = useState<'cards' | 'matrix' | 'raw'>('cards');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [filterType, setFilterType] = useState<'all' | 'multi_only' | 'savings_only'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'multi_only' | 'savings_only' | 'matched_only'>('all');
   const [sortBy, setSortBy] = useState<'savings_desc' | 'quotes_count' | 'name_asc'>('savings_desc');
   const [importMode, setImportMode] = useState<'merge' | 'overwrite'>('merge');
   const [copiedSummary, setCopiedSummary] = useState(false);
   const [hasAppliedToCatalog, setHasAppliedToCatalog] = useState(false);
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
   const [showHelpGuide, setShowHelpGuide] = useState(false);
+
+  // Custom user adjustments for order quantities on the fly
+  const [customQtys, setCustomQtys] = useState<Record<string, number>>({});
+  // Manual link mapping (productName lowercase -> catalog productId)
+  const [manualProductLinks, setManualProductLinks] = useState<Record<string, string>>({});
 
   // Handle file selection
   const handleFile = async (file: File) => {
@@ -77,6 +98,7 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
     setIsParsing(true);
     setHasAppliedToCatalog(false);
     setIsSampleLoaded(false);
+    setSampleKind(null);
 
     try {
       const res = await parseExcelUpload(file);
@@ -96,7 +118,7 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
     }
   };
 
-  // Load sample dataset
+  // Load sample dataset (Format Lengkap)
   const handleLoadSample = () => {
     setIsParsing(true);
     setHasAppliedToCatalog(false);
@@ -104,8 +126,27 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
       const sample = getSampleExcelData();
       setParseResult(sample);
       setIsSampleLoaded(true);
+      setSampleKind('full');
       setSelectedFile(
         new File(['sample'], 'Data_Contoh_Farmasi_5Obat_17Penawaran.xlsx', {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        })
+      );
+      setIsParsing(false);
+    }, 200);
+  };
+
+  // Load sample dataset (Format Kebutuhan: Nama Produk & Qty)
+  const handleLoadSampleRequirement = () => {
+    setIsParsing(true);
+    setHasAppliedToCatalog(false);
+    setTimeout(() => {
+      const sample = getSampleOrderRequirementData();
+      setParseResult(sample);
+      setIsSampleLoaded(true);
+      setSampleKind('requirement');
+      setSelectedFile(
+        new File(['sample'], 'Daftar_Kebutuhan_Order_Nama_dan_Qty.xlsx', {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         })
       );
@@ -118,6 +159,7 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
     setSelectedFile(null);
     setParseResult(null);
     setIsSampleLoaded(false);
+    setSampleKind(null);
     setHasAppliedToCatalog(false);
     setSearchQuery('');
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -143,37 +185,93 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
     }
   };
 
-  // Group quotes by product to get comparison results
+  // Group quotes by product to get comparison results, automatically enriched with catalog products
   const groupedProducts = useMemo(() => {
     if (!parseResult || !parseResult.parsedQuotes) return [];
-    return groupImportedQuotesByProduct(parseResult.parsedQuotes);
-  }, [parseResult]);
 
-  // Overall Statistics
+    // Apply manual product link overrides if any
+    const workingQuotes = parseResult.parsedQuotes.map((q) => {
+      const key = q.name.trim().toLowerCase();
+      const manualId = manualProductLinks[key];
+      if (manualId) {
+        const targetProd = products.find((p) => p.id === manualId);
+        if (targetProd) {
+          return {
+            ...q,
+            name: targetProd.name,
+            sku: targetProd.sku || q.sku,
+            genericName: targetProd.genericName || q.genericName,
+          };
+        }
+      }
+      return q;
+    });
+
+    const grouped = groupImportedQuotesByProduct(workingQuotes, products);
+
+    // Apply custom quantities if user adjusted them in the UI
+    return grouped.map((item) => {
+      const qKey = item.productName.trim().toLowerCase();
+      const customQty = customQtys[qKey];
+      if (customQty !== undefined && customQty > 0) {
+        item.qty = customQty;
+        item.quotes.forEach((q) => {
+          q.qty = customQty;
+        });
+      }
+      return item;
+    });
+  }, [parseResult, products, manualProductLinks, customQtys]);
+
+  // Overall Statistics & Order Simulation
   const stats = useMemo(() => {
     let totalSavingsPotential = 0;
     let multiSupplierCount = 0;
-    const supplierWins: Record<string, { winCount: number; totalQuotes: number }> = {};
+    let totalOrderCheapest = 0;
+    let totalOrderHighest = 0;
+    let totalOrderQty = 0;
+    let matchedCatalogCount = 0;
+    const supplierWins: Record<string, { winCount: number; totalQuotes: number; totalCost: number; itemsFulfilled: number }> = {};
 
     groupedProducts.forEach((p) => {
+      const pQty = p.qty && p.qty > 0 ? p.qty : 1;
+      totalOrderQty += pQty;
+      if (p.isFromCatalog) matchedCatalogCount++;
+
       if (p.supplierCount > 1) {
         multiSupplierCount++;
-        totalSavingsPotential += p.priceDifference;
+        totalSavingsPotential += p.priceDifference * pQty;
       }
+
+      if (p.cheapestQuote) {
+        totalOrderCheapest += p.cheapestQuote.price * pQty;
+      }
+      if (p.highestQuote) {
+        totalOrderHighest += p.highestQuote.price * pQty;
+      }
+
       p.quotes.forEach((q) => {
         if (!supplierWins[q.supplierName]) {
-          supplierWins[q.supplierName] = { winCount: 0, totalQuotes: 0 };
+          supplierWins[q.supplierName] = { winCount: 0, totalQuotes: 0, totalCost: 0, itemsFulfilled: 0 };
         }
         supplierWins[q.supplierName].totalQuotes++;
+        supplierWins[q.supplierName].totalCost += q.price * pQty;
+        supplierWins[q.supplierName].itemsFulfilled++;
       });
+
       if (p.cheapestQuote && p.cheapestQuote.supplierName) {
         const bestSup = p.cheapestQuote.supplierName;
         if (!supplierWins[bestSup]) {
-          supplierWins[bestSup] = { winCount: 0, totalQuotes: 0 };
+          supplierWins[bestSup] = { winCount: 0, totalQuotes: 0, totalCost: 0, itemsFulfilled: 0 };
         }
         supplierWins[bestSup].winCount++;
       }
     });
+
+    const totalOrderSavings = Math.max(0, totalOrderHighest - totalOrderCheapest);
+    const orderSavingsPercentage = totalOrderHighest > 0
+      ? Math.round((totalOrderSavings / totalOrderHighest) * 100)
+      : 0;
 
     const rankedSuppliers = Object.entries(supplierWins)
       .map(([name, data]) => ({ name, ...data }))
@@ -184,12 +282,43 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
 
     return {
       totalProducts: groupedProducts.length,
+      totalOrderQty,
+      totalOrderCheapest,
+      totalOrderHighest,
+      totalOrderSavings,
+      orderSavingsPercentage,
+      matchedCatalogCount,
       multiSupplierCount,
       totalSavingsPotential,
       rankedSuppliers,
       categories,
     };
   }, [groupedProducts]);
+
+  // Handlers for adjusting order quantity directly on UI
+  const handleUpdateQty = (productName: string, delta: number) => {
+    const key = productName.trim().toLowerCase();
+    const current = customQtys[key] !== undefined 
+      ? customQtys[key] 
+      : (groupedProducts.find((p) => p.productName.trim().toLowerCase() === key)?.qty || 1);
+    const nextVal = Math.max(1, current + delta);
+    setCustomQtys((prev) => ({ ...prev, [key]: nextVal }));
+  };
+
+  const handleSetExactQty = (productName: string, val: number) => {
+    const key = productName.trim().toLowerCase();
+    const nextVal = Math.max(1, isNaN(val) ? 1 : val);
+    setCustomQtys((prev) => ({ ...prev, [key]: nextVal }));
+  };
+
+  // Handler for manually linking an imported item to a product card in catalog
+  const handleLinkProduct = (importedName: string, targetProductId: string) => {
+    const key = importedName.trim().toLowerCase();
+    setManualProductLinks((prev) => ({
+      ...prev,
+      [key]: targetProductId,
+    }));
+  };
 
   // Filter & sort products
   const filteredProducts = useMemo(() => {
@@ -218,6 +347,8 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
       list = list.filter((p) => p.supplierCount > 1);
     } else if (filterType === 'savings_only') {
       list = list.filter((p) => p.priceDifference > 0);
+    } else if (filterType === 'matched_only') {
+      list = list.filter((p) => p.isFromCatalog);
     }
 
     // Sorting
@@ -258,29 +389,30 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
   const handleCopySummary = () => {
     if (groupedProducts.length === 0) return;
     const dateStr = new Date().toLocaleDateString('id-ID', { dateStyle: 'full' });
-    let text = `📋 REKOMENDASI SUPPLIER TERMURAH (IMPORT EXCEL)\n`;
+    let text = `📋 REKOMENDASI ORDER & KOMPARASI SUPPLIER TERMURAH\n`;
     text += `Tanggal Analisis: ${dateStr}\n`;
-    text += `Total Produk Dianalisis: ${groupedProducts.length} Produk\n`;
-    text += `Potensi Penghematan Tertinggi: ${formatRupiah(stats.totalSavingsPotential)}\n\n`;
+    text += `Total Produk Kebutuhan: ${groupedProducts.length} Produk (${stats.totalOrderQty} Total Qty)\n`;
+    text += `Estimasi Total Biaya Belanja (Harga Termurah): ${formatRupiah(stats.totalOrderCheapest)}\n`;
+    text += `Potensi Penghematan Order: ${formatRupiah(stats.totalOrderSavings)} (-${stats.orderSavingsPercentage}%)\n\n`;
 
     filteredProducts.forEach((p, idx) => {
-      text += `${idx + 1}. ${p.productName}${p.company ? ` (${p.company})` : ''}\n`;
+      const pQty = p.qty || 1;
+      text += `${idx + 1}. ${p.productName}${p.company ? ` (${p.company})` : ''} - Kebutuhan: ${pQty} ${p.defaultUnit}\n`;
       if (p.cheapestQuote) {
         const sellingPrice = calculateSellingPrice(p.cheapestQuote.price, settings).sellingPrice;
-        text += `   👑 REKOMENDASI TERMURAH: ${p.cheapestQuote.supplierName}\n`;
-        text += `   • Modal Beli: ${formatRupiah(p.cheapestQuote.price)} / ${p.defaultUnit}\n`;
+        text += `   👑 SUPPLIER TERMURAH: ${p.cheapestQuote.supplierName}\n`;
+        text += `   • Modal Satuan: ${formatRupiah(p.cheapestQuote.price)} / ${p.defaultUnit}\n`;
+        text += `   • Total Biaya Order: ${formatRupiah(p.cheapestQuote.price * pQty)} (${pQty} ${p.defaultUnit})\n`;
         text += `   • Rekomendasi Jual: ${formatRupiah(sellingPrice)} (+${settings.marginPercent}%)\n`;
         if (p.supplierCount > 1 && p.priceDifference > 0) {
-          text += `   • Penghematan: Hemat ${formatRupiah(p.priceDifference)} (-${p.savingsPercentage}%) vs ${
-            p.highestQuote?.supplierName || 'vendor lain'
-          }\n`;
+          text += `   • Hemat: ${formatRupiah(p.priceDifference * pQty)} vs ${p.highestQuote?.supplierName || 'vendor lain'}\n`;
         }
       }
       if (p.supplierCount > 1) {
         const allQuotes = p.quotes
-          .map((q) => `${q.supplierName}: ${formatRupiah(q.price)}`)
+          .map((q) => `${q.supplierName}: ${formatRupiah(q.price)} (Total: ${formatRupiah(q.price * pQty)})`)
           .join(', ');
-        text += `   • Semua Vendor: ${allQuotes}\n`;
+        text += `   • Semua Supplier: ${allQuotes}\n`;
       }
       text += `\n`;
     });
@@ -324,17 +456,17 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
         <div className="absolute top-0 right-0 -mt-8 -mr-8 w-48 h-48 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
         <div className="absolute bottom-0 right-1/4 -mb-10 w-40 h-40 bg-teal-400/10 rounded-full blur-xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="max-w-2xl">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] font-bold tracking-wide uppercase mb-2 border border-emerald-400/30">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Komparasi Instan & Rekomendasi PBF</span>
+              <span>Komparasi Instan & Rekomendasi PBF dari Kartu Produk</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
-              <span>Import Data Produk & Komparasi Harga Supplier</span>
+              <span>Import Kebutuhan Produk & Komparasi Harga Supplier</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 mt-1 leading-relaxed">
-              Unggah file Excel penawaran dari berbagai supplier. Sistem otomatis menggabungkan penawaran produk yang sama, mengurutkan harga termurah, dan menghitung selisih keuntungan.
+              Cukup upload data berisi kolom <strong>Item Produk</strong> dan <strong>Qty Kebutuhan</strong>. Sistem otomatis mencocokkan ke <strong>Kartu Produk</strong>, menampilkan perbandingan harga seluruh supplier, menghitung total belanja termurah, dan potensi penghematan.
             </p>
           </div>
 
@@ -351,18 +483,36 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
               </button>
 
               {showTemplateDropdown && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      downloadOrderRequirementTemplate();
+                      setShowTemplateDropdown(false);
+                    }}
+                    className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50 text-xs transition-colors flex items-start gap-2.5 cursor-pointer bg-emerald-50/60"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-bold text-slate-900">Template Kebutuhan Order</p>
+                        <span className="text-[9px] font-black bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded">⭐️ Paling Praktis</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500">Cukup 2 kolom: Item Produk & Qty (Harga dari Kartu Produk)</p>
+                    </div>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
                       downloadCompleteExcelTemplate();
                       setShowTemplateDropdown(false);
                     }}
-                    className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50 text-xs transition-colors flex items-start gap-2.5 cursor-pointer"
+                    className="w-full text-left px-3.5 py-2 hover:bg-slate-100 text-xs transition-colors flex items-start gap-2.5 cursor-pointer border-t border-slate-100"
                   >
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                    <FileSpreadsheet className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
                     <div>
-                      <p className="font-bold text-slate-900">Template Lengkap (2 Sheet)</p>
+                      <p className="font-semibold text-slate-800">Template Lengkap (2 Sheet)</p>
                       <p className="text-[10px] text-slate-500">Sheet Produk & Penawaran + Master Supplier</p>
                     </div>
                   </button>
@@ -398,16 +548,28 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
               )}
             </div>
 
-            {/* Quick Sample Button */}
+            {/* Quick Sample Button: Cukup Nama & Qty */}
+            <button
+              type="button"
+              onClick={handleLoadSampleRequirement}
+              disabled={isParsing}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 text-slate-950 transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+              title="Coba komparasi instan dengan data kebutuhan order (Hanya Item Produk & Qty, harga ditarik dari Kartu Produk)"
+            >
+              <Zap className="w-3.5 h-3.5 text-slate-950 fill-slate-950" />
+              <span>{isSampleLoaded && sampleKind === 'requirement' ? 'Muat Ulang Kebutuhan' : '⚡ Contoh Cukup Nama & Qty'}</span>
+            </button>
+
+            {/* Quick Sample Button: Format Lengkap */}
             <button
               type="button"
               onClick={handleLoadSample}
               disabled={isParsing}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-all cursor-pointer"
               title="Coba langsung dengan 17 penawaran supplier dari 5 obat farmasi populer"
             >
-              <Zap className="w-3.5 h-3.5 text-slate-950 fill-slate-950" />
-              <span>{isSampleLoaded ? 'Muat Ulang Contoh' : '⚡ Coba Data Contoh'}</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-amber-300" />
+              <span>Data Lengkap (17 Penawaran)</span>
             </button>
           </div>
         </div>
@@ -426,7 +588,7 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
               : 'border-slate-300 bg-white hover:border-emerald-400'
           }`}
         >
-          <div className="max-w-md mx-auto space-y-4">
+          <div className="max-w-lg mx-auto space-y-4">
             <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-100 shadow-2xs">
               <FileSpreadsheet className="w-8 h-8" />
             </div>
@@ -436,7 +598,18 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                 Pilih atau Tarik File Excel ke Sini
               </h3>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Mendukung format <span className="font-semibold text-slate-700">.xlsx, .xls, .csv</span>. Mendukung format tabel baris maupun format kolom supplier berdampingan.
+                Mendukung format <span className="font-semibold text-slate-700">.xlsx, .xls, .csv</span>.
+              </p>
+            </div>
+
+            {/* Pro-Tip Box: Cukup Item Produk & Qty */}
+            <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-3.5 text-left space-y-1 text-xs text-emerald-950">
+              <div className="flex items-center gap-1.5 font-bold text-emerald-900">
+                <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Format Paling Praktis: Cukup 2 Kolom "Item Produk" dan "Qty"</span>
+              </div>
+              <p className="text-[11px] text-emerald-800 leading-relaxed">
+                Anda tidak perlu mengisi harga, satuan, atau nama supplier di file Excel. Sistem otomatis mencocokkan nama obat dengan <strong>Kartu Produk</strong> dan langsung menampilkan komparasi harga setiap supplier serta menghitung total biaya pembelian.
               </p>
             </div>
 
@@ -453,21 +626,34 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
 
               <button
                 type="button"
+                onClick={handleLoadSampleRequirement}
+                disabled={isParsing}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white transition-all cursor-pointer shadow-xs"
+              >
+                <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
+                <span>Coba Contoh Format Kebutuhan (Nama & Qty)</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={handleLoadSample}
                 disabled={isParsing}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 transition-colors cursor-pointer"
               >
-                <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
-                <span>Gunakan Data Contoh Farmasi</span>
+                <FileSpreadsheet className="w-4 h-4 text-slate-500" />
+                <span>Data Lengkap Multi-Vendor</span>
               </button>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-center gap-4 text-[11px] text-slate-500">
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-center gap-4 text-[11px] text-slate-500 flex-wrap">
               <span className="flex items-center gap-1">
-                <Check className="w-3.5 h-3.5 text-emerald-600" /> Deteksi Otomatis Kolom Supplier
+                <Check className="w-3.5 h-3.5 text-emerald-600" /> Otomatis Tarik Harga dari Kartu Produk
               </span>
               <span className="flex items-center gap-1">
-                <Check className="w-3.5 h-3.5 text-emerald-600" /> Hitung Margin & Rekomendasi Jual
+                <Check className="w-3.5 h-3.5 text-emerald-600" /> Hitung Total Belanja per Supplier
+              </span>
+              <span className="flex items-center gap-1">
+                <Check className="w-3.5 h-3.5 text-emerald-600" /> Analisis Selisih Penghematan
               </span>
             </div>
           </div>
@@ -794,8 +980,8 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                       className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs hover:border-emerald-300 transition-all space-y-3.5"
                     >
                       {/* Product Header */}
-                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 pb-3 border-b border-slate-100">
-                        <div>
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3 border-b border-slate-100">
+                        <div className="space-y-1.5 flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="text-base font-black text-slate-900 leading-snug">
                               {p.productName}
@@ -803,18 +989,24 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                             <span className="text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
                               {p.category}
                             </span>
-                            {p.supplierCount > 1 ? (
-                              <span className="text-[10px] font-black bg-blue-100 text-blue-900 px-2 py-0.5 rounded-md">
-                                {p.supplierCount} Penawaran Supplier
+                            {p.isFromCatalog ? (
+                              <span className="text-[10px] font-black bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-300 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                Kartu Produk ({p.supplierCount} Supplier)
+                              </span>
+                            ) : p.supplierCount > 0 ? (
+                              <span className="text-[10px] font-bold bg-blue-100 text-blue-900 px-2 py-0.5 rounded-md">
+                                {p.supplierCount} Supplier Excel
                               </span>
                             ) : (
-                              <span className="text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-md">
-                                1 Supplier
+                              <span className="text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3 text-amber-600" />
+                                Belum Terhubung Kartu Produk
                               </span>
                             )}
                           </div>
 
-                          <div className="flex items-center gap-3 text-xs text-slate-600 mt-1.5 flex-wrap">
+                          <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap">
                             {p.company && (
                               <span className="flex items-center gap-1 font-semibold text-slate-800">
                                 <Building2 className="w-3.5 h-3.5 text-slate-400" />
@@ -827,32 +1019,64 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                             {p.packContent && (
                               <span>Isi: <strong>{p.packContent}</strong></span>
                             )}
-                            <span>Satuan: <strong>{p.defaultUnit}</strong></span>
+                            <span>Satuan Utama: <strong className="text-slate-900">{p.defaultUnit}</strong></span>
                           </div>
                         </div>
 
-                        {/* Savings Badge */}
-                        {p.supplierCount > 1 && p.priceDifference > 0 && (
-                          <div className="text-left sm:text-right bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl self-start shrink-0">
-                            <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider block">
-                              Selisih Penghematan
-                            </span>
-                            <span className="text-sm font-black text-emerald-900">
-                              {formatRupiah(p.priceDifference)}{' '}
-                              <span className="text-xs font-bold text-emerald-700">
-                                (-{p.savingsPercentage}%)
-                              </span>
-                            </span>
+                        {/* Order Qty Control & Savings Badge */}
+                        <div className="flex items-center sm:items-end justify-between sm:justify-start gap-3 shrink-0 flex-wrap">
+                          {/* Qty Adjustment Spinner */}
+                          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl p-1 shadow-2xs">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase px-1.5">Qty Kebutuhan:</span>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQty(p.productName, -1)}
+                              className="w-6 h-6 rounded-lg flex items-center justify-center bg-white text-slate-700 hover:bg-slate-200 border border-slate-200 font-bold cursor-pointer transition-colors shadow-2xs"
+                              title="Kurangi Qty"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <input
+                              type="number"
+                              min="1"
+                              value={p.qty || 1}
+                              onChange={(e) => handleSetExactQty(p.productName, parseInt(e.target.value, 10))}
+                              className="w-12 text-center text-xs font-black bg-white rounded-lg border border-slate-300 py-0.5 text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQty(p.productName, 1)}
+                              className="w-6 h-6 rounded-lg flex items-center justify-center bg-white text-slate-700 hover:bg-slate-200 border border-slate-200 font-bold cursor-pointer transition-colors shadow-2xs"
+                              title="Tambah Qty"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                            <span className="text-xs font-bold text-slate-700 pr-1.5">{p.defaultUnit}</span>
                           </div>
-                        )}
+
+                          {/* Savings Badge */}
+                          {p.supplierCount > 1 && p.priceDifference > 0 && (
+                            <div className="text-left sm:text-right bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl shrink-0 shadow-2xs">
+                              <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider block">
+                                Total Potensi Hemat
+                              </span>
+                              <span className="text-sm font-black text-emerald-900">
+                                {formatRupiah(p.priceDifference * (p.qty || 1))}{' '}
+                                <span className="text-[11px] font-bold text-emerald-700">
+                                  (-{p.savingsPercentage}%)
+                                </span>
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {/* Best Recommendation Highlight Box */}
-                      {best && (
-                        <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/5 p-3 sm:p-4 rounded-xl border border-emerald-500/30 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      {best ? (
+                        <div className="bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/5 p-3.5 sm:p-4 rounded-xl border border-emerald-500/30 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
                           <div className="flex items-start gap-3">
-                            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
-                              <Trophy className="w-4 h-4 text-amber-300" />
+                            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                              <Trophy className="w-5 h-5 text-amber-300" />
                             </div>
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
@@ -865,11 +1089,15 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                               </div>
                               <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-700 flex-wrap">
                                 <div>
-                                  Modal Beli: <strong className="text-emerald-800 font-black text-sm">{formatRupiah(best.price)}</strong> / {p.defaultUnit}
+                                  Modal Satuan: <strong className="text-emerald-800 font-black text-sm">{formatRupiah(best.price)}</strong> / {p.defaultUnit}
+                                </div>
+                                <span className="text-slate-300">•</span>
+                                <div className="bg-emerald-100 text-emerald-950 px-2 py-0.5 rounded-md font-bold border border-emerald-300">
+                                  Total Belanja ({p.qty || 1} {p.defaultUnit}): <strong className="text-emerald-900 font-black">{formatRupiah(best.price * (p.qty || 1))}</strong>
                                 </div>
                                 <span className="text-slate-300">•</span>
                                 <div>
-                                  Estimasi Jual ({settings.marginType === 'amount' ? `+${formatRupiah(settings.marginAmountValue)}` : `+${settings.marginPercent}%`}): <strong className="text-slate-900 font-bold">{formatRupiah(bestSelling)}</strong>
+                                  Rekomendasi Jual: <strong className="text-slate-900 font-bold">{formatRupiah(bestSelling)}</strong> (Total: {formatRupiah(bestSelling * (p.qty || 1))})
                                 </div>
                                 {(p.hasMultiUnits !== false && (p.subUnitCount ? p.subUnitCount > 1 : true)) && (
                                   <>
@@ -884,77 +1112,120 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                           </div>
 
                           {p.supplierCount > 1 && highest && highest.supplierName !== best.supplierName && (
-                            <div className="text-xs bg-white/80 border border-emerald-200 px-3 py-2 rounded-xl text-emerald-950 shrink-0 self-start md:self-center">
-                              <span className="font-semibold block text-[11px] text-slate-500">Dibandingkan Vendor Termahal:</span>
-                              <span className="font-bold">
-                                Lebih hemat {formatRupiah(p.priceDifference)} vs {highest.supplierName} ({formatRupiah(highest.price)})
+                            <div className="text-xs bg-white/90 border border-emerald-200 px-3 py-2 rounded-xl text-emerald-950 shrink-0 self-start md:self-center shadow-2xs">
+                              <span className="font-semibold block text-[10px] text-slate-500">Dibandingkan Vendor Termahal:</span>
+                              <span className="font-bold text-xs text-emerald-900">
+                                Lebih hemat {formatRupiah(p.priceDifference * (p.qty || 1))} vs {highest.supplierName} ({formatRupiah(highest.price * (p.qty || 1))})
                               </span>
                             </div>
                           )}
                         </div>
+                      ) : (
+                        /* Unmatched / No Quotes Warning & Manual Connector */
+                        <div className="p-3.5 rounded-xl bg-amber-50/80 border border-amber-200 text-xs text-amber-950 space-y-2.5">
+                          <div className="flex items-center gap-2 font-bold text-amber-900">
+                            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>Item ini belum terhubung dengan penawaran supplier di Kartu Produk.</span>
+                          </div>
+                          <p className="text-[11px] text-amber-800 leading-relaxed">
+                            Pilih produk yang sesuai dari katalog apotek Anda untuk langsung menarik seluruh perbandingan harga supplier:
+                          </p>
+                          <div className="flex items-center gap-2 flex-wrap pt-1">
+                            <select
+                              onChange={(e) => {
+                                if (e.target.value) handleLinkProduct(p.productName, e.target.value);
+                              }}
+                              className="bg-white border border-amber-300 text-xs text-slate-800 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold"
+                            >
+                              <option value="">-- Pilih Produk dari Katalog Apotek --</option>
+                              {products.map((prod) => (
+                                <option key={prod.id} value={prod.id}>
+                                  {prod.name} ({prod.company || '-'}) • {prod.quotes.length} Supplier
+                                </option>
+                              ))}
+                            </select>
+                            <span className="text-[10px] text-slate-500">
+                              (Harga dan satuan otomatis disesuaikan dari kartu produk)
+                            </span>
+                          </div>
+                        </div>
                       )}
 
                       {/* All Supplier Quotes Breakdown Grid */}
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                          Perbandingan Semua Penawaran Supplier:
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                          {p.quotes.map((q, qIdx) => {
-                            const isCheapest = qIdx === 0;
-                            const diffFromCheapest = q.price - (best?.price || 0);
-                            const diffPercent = best?.price
-                              ? Math.round((diffFromCheapest / best.price) * 100)
-                              : 0;
+                      {p.quotes.length > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                              Perbandingan Harga Seluruh Supplier (Kebutuhan: {p.qty || 1} {p.defaultUnit}):
+                            </p>
+                            <span className="text-[11px] text-slate-500">
+                              {p.quotes.length} Penawaran Tersedia
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {p.quotes.map((q, qIdx) => {
+                              const isCheapest = qIdx === 0;
+                              const diffFromCheapest = q.price - (best?.price || 0);
+                              const diffPercent = best?.price
+                                ? Math.round((diffFromCheapest / best.price) * 100)
+                                : 0;
+                              const totalOrderForThisSupplier = q.price * (p.qty || 1);
 
-                            return (
-                              <div
-                                key={qIdx}
-                                className={`p-3 rounded-xl text-xs flex items-center justify-between gap-2 border transition-all ${
-                                  isCheapest
-                                    ? 'bg-emerald-50/70 border-emerald-300 font-medium text-emerald-950 shadow-2xs ring-1 ring-emerald-400/30'
-                                    : 'bg-slate-50 border-slate-200 text-slate-800'
-                                }`}
-                              >
-                                <div className="min-w-0 flex items-center gap-2">
-                                  <span
-                                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
-                                      isCheapest
-                                        ? 'bg-emerald-600 text-white shadow-2xs'
-                                        : 'bg-slate-200 text-slate-700'
-                                    }`}
-                                  >
-                                    {qIdx + 1}
-                                  </span>
-                                  <div className="min-w-0">
-                                    <p className="font-bold truncate text-slate-900">{q.supplierName}</p>
-                                    {q.notes && (
-                                      <p className="text-[10px] text-slate-500 truncate">{q.notes}</p>
+                              return (
+                                <div
+                                  key={qIdx}
+                                  className={`p-3 rounded-xl text-xs flex items-center justify-between gap-2 border transition-all ${
+                                    isCheapest
+                                      ? 'bg-emerald-50/70 border-emerald-300 font-medium text-emerald-950 shadow-2xs ring-1 ring-emerald-400/30'
+                                      : 'bg-slate-50 border-slate-200 text-slate-800'
+                                  }`}
+                                >
+                                  <div className="min-w-0 flex items-center gap-2">
+                                    <span
+                                      className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                                        isCheapest
+                                          ? 'bg-emerald-600 text-white shadow-2xs'
+                                          : 'bg-slate-200 text-slate-700'
+                                      }`}
+                                    >
+                                      {qIdx + 1}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <p className="font-bold truncate text-slate-900">{q.supplierName}</p>
+                                      <p className="text-[10px] text-slate-500">
+                                        Satuan: {formatRupiah(q.price)} / {p.defaultUnit}
+                                      </p>
+                                      {q.notes && (
+                                        <p className="text-[10px] text-slate-500 truncate">{q.notes}</p>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="text-right shrink-0">
+                                    <span
+                                      className={`block font-black text-xs ${
+                                        isCheapest ? 'text-emerald-800 text-sm' : 'text-slate-900'
+                                      }`}
+                                    >
+                                      {formatRupiah(totalOrderForThisSupplier)}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 block">
+                                      untuk {p.qty || 1} {p.defaultUnit}
+                                    </span>
+                                    {isCheapest ? (
+                                      <span className="text-[10px] font-bold text-emerald-700">👑 Termurah</span>
+                                    ) : (
+                                      <span className="text-[10px] font-semibold text-rose-600">
+                                        +{formatRupiah(diffFromCheapest * (p.qty || 1))} (+{diffPercent}%)
+                                      </span>
                                     )}
                                   </div>
                                 </div>
-
-                                <div className="text-right shrink-0">
-                                  <span
-                                    className={`block font-black text-xs ${
-                                      isCheapest ? 'text-emerald-800 text-sm' : 'text-slate-900'
-                                    }`}
-                                  >
-                                    {formatRupiah(q.price)}
-                                  </span>
-                                  {isCheapest ? (
-                                    <span className="text-[10px] font-bold text-emerald-700">👑 Termurah</span>
-                                  ) : (
-                                    <span className="text-[10px] font-semibold text-rose-600">
-                                      +{formatRupiah(diffFromCheapest)} (+{diffPercent}%)
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })
@@ -970,19 +1241,23 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-200 text-slate-700">
                       <th className="p-3 font-bold">Produk & Pabrik</th>
-                      <th className="p-3 font-bold">Kemasan / Satuan</th>
+                      <th className="p-3 font-bold">Qty & Satuan</th>
                       <th className="p-3 font-bold">Supplier Termurah</th>
-                      <th className="p-3 font-bold text-right">Harga Beli</th>
+                      <th className="p-3 font-bold text-right">Modal Satuan</th>
+                      <th className="p-3 font-bold text-right">Total Belanja (Termurah)</th>
                       <th className="p-3 font-bold text-right">Estimasi Jual (+{settings.marginPercent}%)</th>
-                      <th className="p-3 font-bold text-center">Jumlah Vendor</th>
-                      <th className="p-3 font-bold text-right">Potensi Hemat</th>
-                      <th className="p-3 font-bold">Semua Penawaran</th>
+                      <th className="p-3 font-bold text-center">Jumlah Supplier</th>
+                      <th className="p-3 font-bold text-right">Potensi Hemat Order</th>
+                      <th className="p-3 font-bold">Rincian Seluruh Supplier</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {paginatedFilteredProducts.map((p, idx) => {
                       const best = p.cheapestQuote;
+                      const pQty = p.qty || 1;
                       const selling = best ? calculateSellingPrice(best.price, settings).sellingPrice : 0;
+                      const totalOrderCheapest = best ? best.price * pQty : 0;
+                      const totalOrderSavings = p.priceDifference * pQty;
 
                       return (
                         <tr key={idx} className="hover:bg-slate-50 transition-colors">
@@ -992,50 +1267,60 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                               {p.company && (
                                 <p className="text-[10px] text-slate-500">Pabrik: {p.company}</p>
                               )}
+                              {p.isFromCatalog && (
+                                <span className="inline-block mt-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                  ✓ Kartu Produk
+                                </span>
+                              )}
                             </div>
                           </td>
-                          <td className="p-3 text-slate-600">
-                            <p>{p.packaging || '-'}</p>
-                            <p className="text-[10px] text-slate-400">{p.defaultUnit}</p>
+                          <td className="p-3 text-slate-700">
+                            <span className="font-black text-slate-900">{pQty}</span> {p.defaultUnit}
+                            {p.packaging && <p className="text-[10px] text-slate-400">{p.packaging}</p>}
                           </td>
                           <td className="p-3 font-bold text-emerald-800">
                             {best ? (
-                              <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-md border border-emerald-200">
+                              <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-md border border-emerald-200 font-bold">
                                 👑 {best.supplierName}
                               </span>
                             ) : (
-                              '-'
+                              <span className="text-amber-700 font-normal">Belum ada penawaran</span>
                             )}
                           </td>
-                          <td className="p-3 text-right font-black text-emerald-900">
+                          <td className="p-3 text-right font-bold text-slate-900">
                             {best ? formatRupiah(best.price) : '-'}
                           </td>
+                          <td className="p-3 text-right font-black text-emerald-900 text-sm">
+                            {best ? formatRupiah(totalOrderCheapest) : '-'}
+                          </td>
                           <td className="p-3 text-right font-bold text-slate-900">
-                            {best ? formatRupiah(selling) : '-'}
+                            {best ? formatRupiah(selling * pQty) : '-'}
                           </td>
                           <td className="p-3 text-center">
                             <span
                               className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 p.supplierCount > 1
                                   ? 'bg-blue-100 text-blue-900'
-                                  : 'bg-slate-100 text-slate-600'
+                                  : p.supplierCount === 1
+                                  ? 'bg-slate-100 text-slate-700'
+                                  : 'bg-amber-100 text-amber-900'
                               }`}
                             >
-                              {p.supplierCount} Vendor
+                              {p.supplierCount} Supplier
                             </span>
                           </td>
                           <td className="p-3 text-right font-bold">
-                            {p.priceDifference > 0 ? (
-                              <span className="text-emerald-700">
-                                {formatRupiah(p.priceDifference)}{' '}
+                            {totalOrderSavings > 0 ? (
+                              <span className="text-emerald-700 font-black">
+                                {formatRupiah(totalOrderSavings)}{' '}
                                 <span className="text-[10px]">(-{p.savingsPercentage}%)</span>
                               </span>
                             ) : (
                               <span className="text-slate-400">-</span>
                             )}
                           </td>
-                          <td className="p-3 text-slate-600 max-w-xs truncate">
-                            {p.quotes.map((q) => `${q.supplierName} (${formatRupiah(q.price)})`).join(', ')}
+                          <td className="p-3 text-slate-600 max-w-xs truncate text-[11px]">
+                            {p.quotes.map((q) => `${q.supplierName}: ${formatRupiah(q.price * pQty)}`).join(' | ') || '-'}
                           </td>
                         </tr>
                       );

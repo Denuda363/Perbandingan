@@ -34,13 +34,14 @@ import {
   downloadCompleteExcelTemplate, 
   downloadProductOnlyTemplate,
   downloadSupplierOnlyTemplate,
+  downloadOrderRequirementTemplate,
   getSampleExcelData,
   groupImportedQuotesByProduct,
   ImportedProductComparison,
   ExcelParseResult 
 } from '../utils/excelUtils';
 import { formatRupiah, calculateSellingPrice } from '../utils/formatters';
-import { AppSettings, DEFAULT_APP_SETTINGS } from '../types';
+import { AppSettings, DEFAULT_APP_SETTINGS, Product } from '../types';
 import { Pagination } from './Pagination';
 
 interface ExcelImportModalProps {
@@ -51,6 +52,7 @@ interface ExcelImportModalProps {
     importMode: 'merge' | 'overwrite'
   ) => void;
   settings?: AppSettings;
+  products?: Product[];
 }
 
 export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
@@ -58,6 +60,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   onClose,
   onConfirmImport,
   settings = DEFAULT_APP_SETTINGS,
+  products = [],
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeScreenTab, setActiveScreenTab] = useState<'upload' | 'templates' | 'guide'>('upload');
@@ -117,11 +120,11 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     }, 250);
   };
 
-  // Group quotes by product to enable quick side-by-side comparison & recommendation
+  // Group quotes by product to enable quick side-by-side comparison & recommendation, automatically pulling all supplier prices from product cards
   const groupedProducts = useMemo(() => {
     if (!parseResult || !parseResult.parsedQuotes) return [];
-    return groupImportedQuotesByProduct(parseResult.parsedQuotes);
-  }, [parseResult]);
+    return groupImportedQuotesByProduct(parseResult.parsedQuotes, products);
+  }, [parseResult, products]);
 
   // Summary statistics of comparison
   const comparisonStats = useMemo(() => {
@@ -1080,8 +1083,41 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                 </p>
               </div>
 
+              {/* Template Option 0: Kebutuhan Order Saja (Item Produk & Qty) */}
+              <div className="p-3.5 rounded-2xl border-2 border-emerald-300 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                    <Sparkles className="w-5 h-5 text-amber-300" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-black text-emerald-900 bg-emerald-200 px-2 py-0.5 rounded-md">
+                        ⭐️ Paling Praktis & Cepat
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-600 bg-white/80 border border-emerald-200 px-1.5 py-0.5 rounded">
+                        Cukup 2 Kolom: Item Produk & Qty
+                      </span>
+                    </div>
+                    <h4 className="text-xs sm:text-sm font-black text-slate-900 mt-1">
+                      Template Kebutuhan Order (Cukup Nama Produk & Qty)
+                    </h4>
+                    <p className="text-[11px] text-emerald-950 mt-0.5 leading-relaxed">
+                      Tidak perlu isi harga, satuan, atau supplier. Sistem otomatis mencocokkan nama obat ke <strong>Kartu Produk</strong> dan langsung menampilkan perbandingan harga seluruh supplier!
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={downloadOrderRequirementTemplate}
+                  className="w-full xs:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white text-xs font-black rounded-xl shadow-xs cursor-pointer shrink-0 min-h-[44px]"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Unduh (.xlsx)</span>
+                </button>
+              </div>
+
               {/* Template Option 1: Complete */}
-              <div className="p-3.5 rounded-2xl border border-emerald-200 bg-emerald-50/50 flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3">
+              <div className="p-3.5 rounded-2xl border border-slate-200 bg-white flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3">
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5">
                     <FileSpreadsheet className="w-5 h-5" />

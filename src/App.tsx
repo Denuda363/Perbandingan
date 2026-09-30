@@ -1081,9 +1081,12 @@ export default function App() {
         {/* View Mode 5: Excel Compare & Instant Supplier Recommendation */}
         {currentView === 'excel-compare' && (
           <ExcelCompareView
+            products={products}
+            suppliers={suppliers}
             settings={settings}
             onConfirmImport={handleConfirmImport}
             onNavigateToMatrix={() => setCurrentView('matrix')}
+            onNavigateToSimulation={() => setCurrentView('simulation')}
           />
         )}
 
@@ -1207,6 +1210,7 @@ export default function App() {
         onClose={() => setIsImportModalOpen(false)}
         onConfirmImport={handleConfirmImport}
         settings={settings}
+        products={products}
       />
 
       <PWAInstallModal

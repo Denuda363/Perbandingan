@@ -3,6 +3,7 @@ import { Product, Supplier, SupplierQuote } from '../types';
 
 export interface ParsedProductImportItem {
   name: string;
+  qty?: number;
   genericName?: string;
   company?: string;
   packaging?: string;
@@ -48,6 +49,9 @@ export interface ImportedProductComparison {
   defaultUnit: string;
   subUnitCount: number;
   subUnitName: string;
+  qty?: number;
+  catalogProduct?: Product | null;
+  isFromCatalog?: boolean;
   quotes: ParsedProductImportItem[];
   cheapestQuote: ParsedProductImportItem | null;
   highestQuote: ParsedProductImportItem | null;
@@ -66,28 +70,152 @@ export interface ExcelParseResult {
 }
 
 /**
+ * Robustly matches an imported product item (name, sku, generic)
+ * against the existing products catalog (kartu produk).
+ * Uses clean alphanumeric matching, token overlap, and sub-string analysis.
+ */
+export function findMatchingCatalogProduct(
+  query: { name?: string; sku?: string; genericName?: string },
+  catalogProducts: Product[] = []
+): Product | null {
+  if (!catalogProducts || catalogProducts.length === 0) return null;
+
+  const rawName = (query.name || '').trim();
+  const rawSku = (query.sku || '').trim().toLowerCase();
+  const rawGeneric = (query.genericName || '').trim().toLowerCase();
+
+  // 1. Match by SKU exact
+  if (rawSku) {
+    const bySku = catalogProducts.find(
+      (p) => p.sku && p.sku.trim().toLowerCase() === rawSku
+    );
+    if (bySku) return bySku;
+  }
+
+  if (!rawName) return null;
+
+  const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const cleanName = clean(rawName);
+
+  // 2. Exact name match (case-insensitive)
+  const exact = catalogProducts.find(
+    (p) => p.name.trim().toLowerCase() === rawName.toLowerCase()
+  );
+  if (exact) return exact;
+
+  // 3. Clean alphanumeric match (ignoring spaces, dashes, dots, brackets, e.g. "Paracetamol 500mg" === "Paracetamol 500 mg")
+  const cleanExact = catalogProducts.find(
+    (p) => clean(p.name) === cleanName
+  );
+  if (cleanExact) return cleanExact;
+
+  // 4. Substring clean match
+  const substringMatch = catalogProducts.find((p) => {
+    const cpClean = clean(p.name);
+    return (
+      (cleanName.length >= 4 && cpClean.includes(cleanName)) ||
+      (cpClean.length >= 4 && cleanName.includes(cpClean))
+    );
+  });
+  if (substringMatch) return substringMatch;
+
+  // 5. Significant token / word overlap match
+  const getTokens = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 1 && !['obat', 'tablet', 'kapsul', 'kaplet', 'sirup', 'box', 'strip', 'lembar', 'mg', 'ml'].includes(w));
+
+  const queryTokens = getTokens(rawName);
+  if (queryTokens.length > 0) {
+    let bestProduct: Product | null = null;
+    let maxMatchCount = 0;
+
+    for (const p of catalogProducts) {
+      const pTokens = getTokens(p.name);
+      let matchCount = 0;
+      for (const qt of queryTokens) {
+        if (pTokens.some((pt) => pt === qt || pt.includes(qt) || qt.includes(pt))) {
+          matchCount++;
+        }
+      }
+      if (matchCount > maxMatchCount && (matchCount >= 2 || matchCount === queryTokens.length)) {
+        maxMatchCount = matchCount;
+        bestProduct = p;
+      }
+    }
+    if (bestProduct && maxMatchCount >= Math.min(2, queryTokens.length)) {
+      return bestProduct;
+    }
+  }
+
+  // 6. Generic name match
+  if (rawGeneric) {
+    const byGeneric = catalogProducts.find(
+      (p) => p.genericName && clean(p.genericName) === clean(rawGeneric)
+    );
+    if (byGeneric) return byGeneric;
+  }
+
+  // 7. Match query against genericName of catalog products
+  const byNameAsGeneric = catalogProducts.find(
+    (p) => p.genericName && clean(p.genericName) === cleanName
+  );
+  if (byNameAsGeneric) return byNameAsGeneric;
+
+  return null;
+}
+
+/**
  * Groups raw imported quotes by product to show instant price comparisons
  * and identify the recommended lowest price supplier for each product.
+ * When catalogProducts is provided, it automatically matches products and
+ * pulls all existing supplier quotes from the product cards (kartu produk).
  */
-export function groupImportedQuotesByProduct(quotes: ParsedProductImportItem[]): ImportedProductComparison[] {
+export function groupImportedQuotesByProduct(
+  quotes: ParsedProductImportItem[],
+  catalogProducts: Product[] = []
+): ImportedProductComparison[] {
   const map = new Map<string, ImportedProductComparison>();
 
   for (const q of quotes) {
     if (!q.name || !q.name.trim()) continue;
-    const key = q.name.trim().toLowerCase();
+    const rawKey = q.name.trim().toLowerCase();
+
+    // Look for matching product in existing catalog (kartu produk)
+    const matchedCatalogProduct = findMatchingCatalogProduct(
+      { name: q.name, sku: q.sku, genericName: q.genericName },
+      catalogProducts
+    );
+
+    const key = matchedCatalogProduct ? matchedCatalogProduct.id : rawKey;
     
     if (!map.has(key)) {
       map.set(key, {
-        productName: q.name.trim(),
-        genericName: q.genericName,
-        company: q.company,
-        packaging: q.packaging,
-        packContent: q.packContent,
-        hasMultiUnits: q.hasMultiUnits !== undefined ? q.hasMultiUnits : (q.subUnitCount ? q.subUnitCount > 1 : true),
-        category: q.category || 'Umum',
-        defaultUnit: q.defaultUnit || 'Box',
-        subUnitCount: q.subUnitCount || 10,
-        subUnitName: q.subUnitName || 'lembar',
+        productName: matchedCatalogProduct ? matchedCatalogProduct.name : q.name.trim(),
+        genericName: q.genericName || matchedCatalogProduct?.genericName,
+        company: q.company || matchedCatalogProduct?.company,
+        packaging: q.packaging || matchedCatalogProduct?.packaging,
+        packContent: q.packContent || matchedCatalogProduct?.packContent,
+        hasMultiUnits: matchedCatalogProduct 
+          ? (matchedCatalogProduct.hasMultiUnits ?? (matchedCatalogProduct.subUnitCount ? matchedCatalogProduct.subUnitCount > 1 : true))
+          : (q.hasMultiUnits ?? (q.subUnitCount ? q.subUnitCount > 1 : true)),
+        category: (q.category && q.category.trim() && q.category !== 'Umum') 
+          ? q.category 
+          : (matchedCatalogProduct?.category || q.category || 'Umum'),
+        defaultUnit: (q.defaultUnit && q.defaultUnit.trim() && q.defaultUnit !== 'Box') 
+          ? q.defaultUnit 
+          : (matchedCatalogProduct?.defaultUnit || q.defaultUnit || 'Box'),
+        subUnitCount: (q.subUnitCount && q.subUnitCount !== 10 && q.subUnitCount > 0) 
+          ? q.subUnitCount 
+          : (matchedCatalogProduct?.subUnitCount || (q.subUnitCount && q.subUnitCount > 0 ? q.subUnitCount : 10)),
+        subUnitName: (q.subUnitName && q.subUnitName.trim() && q.subUnitName !== 'lembar') 
+          ? q.subUnitName 
+          : (matchedCatalogProduct?.subUnitName || q.subUnitName || 'lembar'),
+        qty: q.qty && q.qty > 0 ? q.qty : 1,
+        catalogProduct: matchedCatalogProduct,
+        isFromCatalog: !!matchedCatalogProduct,
         quotes: [],
         cheapestQuote: null,
         highestQuote: null,
@@ -98,22 +226,82 @@ export function groupImportedQuotesByProduct(quotes: ParsedProductImportItem[]):
     }
 
     const item = map.get(key)!;
-    if (q.hasMultiUnits !== undefined && item.hasMultiUnits === undefined) item.hasMultiUnits = q.hasMultiUnits;
-    if (q.company && !item.company) item.company = q.company;
-    if (q.packaging && !item.packaging) item.packaging = q.packaging;
-    if (q.packContent && !item.packContent) item.packContent = q.packContent;
-    if (q.category && item.category === 'Umum') item.category = q.category;
-    if (q.defaultUnit && item.defaultUnit === 'Box') item.defaultUnit = q.defaultUnit;
-    if (q.subUnitCount && item.subUnitCount === 10) item.subUnitCount = q.subUnitCount;
-    if (q.subUnitName && item.subUnitName === 'lembar') item.subUnitName = q.subUnitName;
+    if (q.qty && q.qty > 0) {
+      item.qty = q.qty;
+    }
+    
+    // Enrich with catalog product metadata if matched
+    if (matchedCatalogProduct) {
+      item.catalogProduct = matchedCatalogProduct;
+      item.isFromCatalog = true;
+      item.productName = matchedCatalogProduct.name;
+      if (!item.company) item.company = matchedCatalogProduct.company;
+      if (!item.packaging) item.packaging = matchedCatalogProduct.packaging;
+      if (!item.packContent) item.packContent = matchedCatalogProduct.packContent;
+      if (!item.category || item.category === 'Umum') item.category = matchedCatalogProduct.category;
+      if (!item.defaultUnit || item.defaultUnit === 'Box') item.defaultUnit = matchedCatalogProduct.defaultUnit;
+      if (!item.subUnitName || item.subUnitName === 'lembar') item.subUnitName = matchedCatalogProduct.subUnitName || 'lembar';
+      if (!item.subUnitCount || item.subUnitCount === 10) item.subUnitCount = matchedCatalogProduct.subUnitCount || 10;
+      if (item.hasMultiUnits === undefined) item.hasMultiUnits = matchedCatalogProduct.hasMultiUnits;
+    }
 
+    // 1. If the imported row has a valid supplier and price, add/merge it
     if (q.supplierName && q.price > 0) {
-      item.quotes.push(q);
+      const existingIdx = item.quotes.findIndex(
+        (x) => x.supplierName.toLowerCase() === q.supplierName.toLowerCase()
+      );
+      if (existingIdx >= 0) {
+        if (q.price < item.quotes[existingIdx].price) {
+          item.quotes[existingIdx] = { ...q, qty: item.qty || 1 };
+        }
+      } else {
+        item.quotes.push({ ...q, qty: item.qty || 1 });
+      }
+    }
+
+    // 2. Automatically populate quotes from the matched product card in catalog
+    if (matchedCatalogProduct && matchedCatalogProduct.quotes && matchedCatalogProduct.quotes.length > 0) {
+      matchedCatalogProduct.quotes.forEach((cq) => {
+        if (!cq.supplierName || cq.price <= 0) return;
+        const existingIdx = item.quotes.findIndex(
+          (x) => x.supplierName.toLowerCase() === cq.supplierName.toLowerCase()
+        );
+        if (existingIdx === -1) {
+          item.quotes.push({
+            name: matchedCatalogProduct!.name,
+            genericName: matchedCatalogProduct!.genericName,
+            company: matchedCatalogProduct!.company,
+            packaging: matchedCatalogProduct!.packaging,
+            packContent: matchedCatalogProduct!.packContent,
+            category: matchedCatalogProduct!.category,
+            defaultUnit: cq.unit || matchedCatalogProduct!.defaultUnit,
+            subUnitCount: matchedCatalogProduct!.subUnitCount || 10,
+            subUnitName: matchedCatalogProduct!.subUnitName || 'lembar',
+            sku: matchedCatalogProduct!.sku,
+            supplierName: cq.supplierName,
+            price: cq.price,
+            hna: cq.hna,
+            discountPercent: cq.discountPercent,
+            pricePerSubUnit: cq.pricePerSubUnit,
+            priceWithPpn: cq.priceWithPpn,
+            moq: cq.moq,
+            leadTimeDays: cq.leadTimeDays,
+            inStock: cq.inStock !== false,
+            notes: cq.notes,
+            qty: item.qty || 1,
+          });
+        }
+      });
     }
   }
 
   const result: ImportedProductComparison[] = [];
   map.forEach((item) => {
+    // Ensure all quotes have updated qty matching the requirement
+    item.quotes.forEach((q) => {
+      q.qty = item.qty || 1;
+    });
+
     // Sort quotes ascending by price: index 0 is cheapest!
     item.quotes.sort((a, b) => a.price - b.price);
     item.supplierCount = item.quotes.length;
@@ -505,6 +693,84 @@ export function downloadProductOnlyTemplate(): void {
 
   XLSX.utils.book_append_sheet(wb, ws, 'Produk & Penawaran');
   XLSX.writeFile(wb, 'Template_Produk_Harga_PBF.xlsx');
+}
+
+/**
+ * Generates and downloads template specifically for Order Requirements (Only Product Name & Qty)
+ */
+export function downloadOrderRequirementTemplate(): void {
+  const wb = XLSX.utils.book_new();
+
+  const orderData = [
+    {
+      'Item Produk *': 'Paracetamol 500mg',
+      'Qty / Kebutuhan *': 10,
+      'Satuan (Opsional)': 'Lembar',
+      'Catatan Kebutuhan': 'Kebutuhan stok mingguan apotek',
+    },
+    {
+      'Item Produk *': 'Amoxicillin 500mg',
+      'Qty / Kebutuhan *': 5,
+      'Satuan (Opsional)': 'Lembar',
+      'Catatan Kebutuhan': 'Untuk resep antibiotik',
+    },
+    {
+      'Item Produk *': 'Omeprazole 20mg',
+      'Qty / Kebutuhan *': 4,
+      'Satuan (Opsional)': 'Strip',
+      'Catatan Kebutuhan': 'Stok lambung tinggal sedikit',
+    },
+    {
+      'Item Produk *': 'Masker Medis 3-Ply Earloop',
+      'Qty / Kebutuhan *': 15,
+      'Satuan (Opsional)': 'Pcs',
+      'Catatan Kebutuhan': 'Fast moving alkes',
+    },
+    {
+      'Item Produk *': 'Vitamin C 500mg',
+      'Qty / Kebutuhan *': 8,
+      'Satuan (Opsional)': 'Tablet',
+      'Catatan Kebutuhan': 'Suplemen vitamin',
+    },
+    {
+      'Item Produk *': 'Cetirizine 10mg',
+      'Qty / Kebutuhan *': 6,
+      'Satuan (Opsional)': 'Lembar',
+      'Catatan Kebutuhan': 'Alergi & antihistamin',
+    },
+  ];
+
+  const ws = XLSX.utils.json_to_sheet(orderData);
+  ws['!cols'] = [
+    { wch: 32 }, // Item Produk
+    { wch: 18 }, // Qty / Kebutuhan
+    { wch: 18 }, // Satuan
+    { wch: 35 }, // Catatan
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Daftar Kebutuhan PO');
+  XLSX.writeFile(wb, 'Template_Kebutuhan_Order_Cukup_Nama_dan_Qty.xlsx');
+}
+
+/**
+ * Returns sample pre-parsed order requirements data for immediate testing
+ */
+export function getSampleOrderRequirementData(): ExcelParseResult {
+  return {
+    parsedQuotes: [
+      { name: 'Paracetamol 500mg', qty: 10, defaultUnit: '', category: '', supplierName: '', price: 0 },
+      { name: 'Amoxicillin 500mg', qty: 5, defaultUnit: '', category: '', supplierName: '', price: 0 },
+      { name: 'Omeprazole 20mg', qty: 4, defaultUnit: '', category: '', supplierName: '', price: 0 },
+      { name: 'Masker Medis 3-Ply Earloop', qty: 15, defaultUnit: '', category: '', supplierName: '', price: 0 },
+      { name: 'Vitamin C 500mg', qty: 8, defaultUnit: '', category: '', supplierName: '', price: 0 },
+      { name: 'Cetirizine 10mg', qty: 6, defaultUnit: '', category: '', supplierName: '', price: 0 },
+    ],
+    parsedSuppliers: [],
+    errors: [],
+    warnings: [],
+    sheetNames: ['Daftar Kebutuhan PO'],
+    totalRows: 6,
+  };
 }
 
 /**
@@ -1215,10 +1481,10 @@ export async function parseExcelUpload(file: File): Promise<ExcelParseResult> {
         let company = '';
         let packaging = '';
         let packContent = '';
-        let subUnitCount = 10;
-        let subUnitName = 'lembar';
-        let category = 'Umum';
-        let unit = 'Box';
+        let subUnitCount = 0;
+        let subUnitName = '';
+        let category = '';
+        let unit = '';
         let sku = '';
         let description = '';
         let supplierName = '';
@@ -1231,6 +1497,7 @@ export async function parseExcelUpload(file: File): Promise<ExcelParseResult> {
         let leadTimeDays = 1;
         let inStock = true;
         let quoteNotes = '';
+        let qty = 1;
 
         Object.entries(row).forEach(([key, val]) => {
           const norm = normalizeHeaderKey(key);
@@ -1238,13 +1505,41 @@ export async function parseExcelUpload(file: File): Promise<ExcelParseResult> {
 
           if (
             norm.includes('namaproduk') ||
+            norm.includes('itemproduk') ||
+            norm.includes('namabarang') ||
+            norm.includes('namaobat') ||
+            norm.includes('namaitem') ||
+            norm.includes('itemname') ||
+            norm.includes('productname') ||
             norm === 'produk' ||
-            norm === 'namaobat' ||
-            norm === 'barang' ||
             norm === 'product' ||
-            norm === 'item'
+            norm === 'item' ||
+            norm === 'barang' ||
+            norm === 'obat' ||
+            norm === 'nama' ||
+            norm.includes('deskripsibarang') ||
+            norm.includes('uraian') ||
+            norm === 'daftarkebutuhan'
           ) {
             productName = strVal;
+          } else if (
+            norm.includes('qty') ||
+            norm.includes('quantity') ||
+            norm.includes('jumlah') ||
+            norm.includes('kebutuhan') ||
+            norm.includes('pesanan') ||
+            norm.includes('order') ||
+            norm.includes('kuantitas') ||
+            norm.includes('kuantiti') ||
+            norm === 'banyak' ||
+            norm === 'banyaknya' ||
+            norm === 'jml' ||
+            norm === 'vol' ||
+            norm === 'volume'
+          ) {
+            const cleanDigits = strVal.replace(/[^\d]/g, '');
+            const qVal = parseInt(cleanDigits, 10);
+            if (!isNaN(qVal) && qVal > 0) qty = qVal;
           } else if (norm.includes('generik') || norm.includes('zataktif') || norm.includes('generic')) {
             genericName = strVal;
           } else if (
@@ -1370,7 +1665,8 @@ export async function parseExcelUpload(file: File): Promise<ExcelParseResult> {
         // Check for Wide-Matrix Supplier Columns if no single supplier column was populated
         if (productName && !supplierName) {
           const STANDARD_METADATA_KEYS = new Set([
-            'namaproduk', 'produk', 'namaobat', 'barang', 'product', 'item',
+            'namaproduk', 'produk', 'namaobat', 'barang', 'product', 'item', 'itemproduk', 'namabarang',
+            'qty', 'quantity', 'jumlah', 'banyak', 'banyaknya', 'kebutuhan', 'pesanan', 'order', 'jml', 'jumlahpesanan', 'jumlahorder',
             'generik', 'zataktif', 'generic',
             'company', 'pabrik', 'produsen', 'manufaktur', 'perusahaan',
             'kemasan', 'packaging', 'packing',
@@ -1406,6 +1702,7 @@ export async function parseExcelUpload(file: File): Promise<ExcelParseResult> {
 
                 parsedQuotes.push({
                   name: productName,
+                  qty: qty || 1,
                   genericName: genericName || undefined,
                   company: company || undefined,
                   packaging: packaging || undefined,
@@ -1437,6 +1734,7 @@ export async function parseExcelUpload(file: File): Promise<ExcelParseResult> {
         if (productName && supplierName) {
           parsedQuotes.push({
             name: productName,
+            qty: qty || 1,
             genericName: genericName || undefined,
             company: company || undefined,
             packaging: packaging || undefined,
@@ -1459,17 +1757,18 @@ export async function parseExcelUpload(file: File): Promise<ExcelParseResult> {
             notes: quoteNotes || undefined,
           });
         } else if (productName && !supplierName) {
-          // Product row without supplier price
+          // Product row without supplier price (e.g., from order requirements list: product & qty only)
           parsedQuotes.push({
             name: productName,
+            qty: qty || 1,
             genericName: genericName || undefined,
             company: company || undefined,
             packaging: packaging || undefined,
             packContent: packContent || undefined,
-            subUnitCount: safeCount,
-            subUnitName: subUnitName || 'lembar',
-            category,
-            defaultUnit: unit,
+            subUnitCount: subUnitCount > 0 ? subUnitCount : 0,
+            subUnitName: subUnitName || undefined,
+            category: category || '',
+            defaultUnit: unit || '',
             sku: sku || undefined,
             description: description || undefined,
             supplierName: '',
@@ -1479,7 +1778,6 @@ export async function parseExcelUpload(file: File): Promise<ExcelParseResult> {
             inStock: true,
             notes: quoteNotes || undefined,
           });
-          warnings.push(`Baris "${productName}" tidak memiliki nama supplier. Ditambahkan sebagai produk tanpa penawaran.`);
         } else if (!productName && supplierName) {
           // Might be a supplier record in this sheet
           parsedSuppliers.push({
@@ -1519,47 +1817,59 @@ export function exportComparisonReportToExcel(
     const best = item.cheapestQuote;
     const highest = item.highestQuote;
     const bestPrice = best ? best.price : 0;
+    const itemQty = item.qty && item.qty > 0 ? item.qty : 1;
+    const totalBestOrder = bestPrice * itemQty;
     const sellingPrice = bestPrice ? Math.round(bestPrice * (1 + marginPercent / 100)) : 0;
+    const totalSellingOrder = sellingPrice * itemQty;
+    const totalSavings = item.priceDifference * itemQty;
     const otherQuotes = item.quotes
-      .map(q => `${q.supplierName}: Rp ${q.price.toLocaleString('id-ID')}`)
+      .map(q => `${q.supplierName}: Rp ${q.price.toLocaleString('id-ID')} (Total: Rp ${(q.price * itemQty).toLocaleString('id-ID')})`)
       .join(' | ');
 
     return {
       'No': idx + 1,
-      'Nama Produk': item.productName,
+      'Item Produk': item.productName,
       'Pabrik / Produsen': item.company || '-',
       'Kemasan': item.packaging || '-',
       'Isi Kemasan': item.packContent || '-',
       'Kategori': item.category,
       'Satuan': item.defaultUnit,
-      'Jumlah Supplier': item.supplierCount,
+      'Qty Kebutuhan': itemQty,
+      'Jumlah Supplier Terdaftar': item.supplierCount,
       'Supplier Termurah (Rekomendasi)': best ? best.supplierName : '-',
-      'Harga Beli Termurah (Rp)': bestPrice,
-      'Rekomendasi Jual (+Margin%)': sellingPrice,
+      'Harga Beli Satuan (Rp)': bestPrice,
+      'Total Modal Belanja (Rp)': totalBestOrder,
+      'Rekomendasi Jual Satuan (+Margin%)': sellingPrice,
+      'Estimasi Total Jual / Omset (Rp)': totalSellingOrder,
       'Supplier Termahal': highest && item.supplierCount > 1 ? highest.supplierName : '-',
-      'Harga Tertinggi (Rp)': highest && item.supplierCount > 1 ? highest.price : bestPrice,
-      'Potensi Hemat (Rp)': item.priceDifference,
+      'Harga Satuan Termahal (Rp)': highest && item.supplierCount > 1 ? highest.price : bestPrice,
+      'Potensi Hemat per Satuan (Rp)': item.priceDifference,
+      'Total Potensi Hemat Pesanan (Rp)': totalSavings,
       'Hemat (%)': item.savingsPercentage ? `${item.savingsPercentage}%` : '0%',
-      'Rincian Semua Penawaran': otherQuotes,
+      'Rincian Seluruh Penawaran Supplier': otherQuotes || 'Belum ada penawaran',
     };
   });
 
   const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
   wsSummary['!cols'] = [
     { wch: 5 },  // No
-    { wch: 30 }, // Nama Produk
+    { wch: 30 }, // Item Produk
     { wch: 22 }, // Pabrik
     { wch: 18 }, // Kemasan
     { wch: 20 }, // Isi Kemasan
     { wch: 20 }, // Kategori
     { wch: 10 }, // Satuan
+    { wch: 14 }, // Qty Kebutuhan
     { wch: 15 }, // Jumlah Supplier
     { wch: 26 }, // Supplier Termurah
-    { wch: 22 }, // Harga Beli Termurah
-    { wch: 22 }, // Rekomendasi Jual
+    { wch: 20 }, // Harga Beli Satuan
+    { wch: 22 }, // Total Modal Belanja
+    { wch: 20 }, // Rekomendasi Jual
+    { wch: 22 }, // Estimasi Total Jual
     { wch: 22 }, // Supplier Termahal
     { wch: 20 }, // Harga Tertinggi
-    { wch: 18 }, // Potensi Hemat
+    { wch: 18 }, // Potensi Hemat Satuan
+    { wch: 22 }, // Total Hemat Pesanan
     { wch: 12 }, // Hemat %
     { wch: 45 }, // Rincian Penawaran
   ];
