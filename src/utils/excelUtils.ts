@@ -13,6 +13,7 @@ export interface ParsedProductImportItem {
   subUnitName?: string;
   category: string;
   defaultUnit: string;
+  unit?: string;
   sku?: string;
   description?: string;
   supplierName: string;

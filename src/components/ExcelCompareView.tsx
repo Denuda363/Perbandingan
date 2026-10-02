@@ -970,9 +970,11 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                   const highest = p.highestQuote;
                   const bestSelling = best ? calculateSellingPrice(best.price, settings).sellingPrice : 0;
                   const subUnitCount = p.subUnitCount || 10;
+                  const isBestSmallest = best?.unit && p.subUnitName && best.unit.toLowerCase() === p.subUnitName.toLowerCase();
                   const bestPricePerSub = best
-                    ? best.pricePerSubUnit || Math.round(best.price / subUnitCount)
+                    ? best.pricePerSubUnit || (isBestSmallest ? best.price : Math.round(best.price / subUnitCount))
                     : 0;
+                  const bestUnitLabel = best?.unit || p.defaultUnit;
 
                   return (
                     <div
@@ -1089,11 +1091,11 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                               </div>
                               <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-700 flex-wrap">
                                 <div>
-                                  Modal Satuan: <strong className="text-emerald-800 font-black text-sm">{formatRupiah(best.price)}</strong> / {p.defaultUnit}
+                                  Modal Satuan: <strong className="text-emerald-800 font-black text-sm">{formatRupiah(best.price)}</strong> / {bestUnitLabel}
                                 </div>
                                 <span className="text-slate-300">•</span>
                                 <div className="bg-emerald-100 text-emerald-950 px-2 py-0.5 rounded-md font-bold border border-emerald-300">
-                                  Total Belanja ({p.qty || 1} {p.defaultUnit}): <strong className="text-emerald-900 font-black">{formatRupiah(best.price * (p.qty || 1))}</strong>
+                                  Total Belanja ({p.qty || 1} {bestUnitLabel}): <strong className="text-emerald-900 font-black">{formatRupiah(best.price * (p.qty || 1))}</strong>
                                 </div>
                                 <span className="text-slate-300">•</span>
                                 <div>
@@ -1193,7 +1195,7 @@ export const ExcelCompareView: React.FC<ExcelCompareViewProps> = ({
                                     <div className="min-w-0">
                                       <p className="font-bold truncate text-slate-900">{q.supplierName}</p>
                                       <p className="text-[10px] text-slate-500">
-                                        Satuan: {formatRupiah(q.price)} / {p.defaultUnit}
+                                        Satuan: {formatRupiah(q.price)} / {q.unit || p.defaultUnit}
                                       </p>
                                       {q.notes && (
                                         <p className="text-[10px] text-slate-500 truncate">{q.notes}</p>

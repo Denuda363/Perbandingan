@@ -294,7 +294,16 @@ export default function App() {
   // Handlers for Products
   const handleSaveProduct = (
     productData: Partial<Product>,
-    initialQuote?: { supplierName: string; price: number; notes?: string }
+    initialQuote?: {
+      supplierName: string;
+      price: number;
+      hna?: number;
+      discountPercent?: number;
+      pricePerSubUnit?: number;
+      priceWithPpn?: number;
+      unit?: string;
+      notes?: string;
+    }
   ) => {
     if (productToEdit) {
       const updatedProduct: Product = {
@@ -335,7 +344,11 @@ export default function App() {
           supplierId: matchedSup.id,
           supplierName: matchedSup.name,
           price: initialQuote.price,
-          unit: productData.defaultUnit || 'Unit',
+          hna: initialQuote.hna || initialQuote.price,
+          discountPercent: initialQuote.discountPercent || 0,
+          pricePerSubUnit: initialQuote.pricePerSubUnit || initialQuote.price,
+          priceWithPpn: initialQuote.priceWithPpn || Math.round(initialQuote.price * 1.11),
+          unit: initialQuote.unit || productData.defaultUnit || 'Unit',
           moq: 1,
           leadTimeDays: 1,
           lastUpdated: new Date().toISOString().slice(0, 10),
@@ -348,6 +361,13 @@ export default function App() {
         id: newId,
         name: productData.name || 'Produk Baru',
         genericName: productData.genericName,
+        company: productData.company,
+        packaging: productData.packaging,
+        packContent: productData.packContent,
+        hasMultiUnits: productData.hasMultiUnits,
+        units: productData.units,
+        subUnitCount: productData.subUnitCount,
+        subUnitName: productData.subUnitName,
         category: productData.category || 'Umum',
         defaultUnit: productData.defaultUnit || 'Box',
         sku: productData.sku,

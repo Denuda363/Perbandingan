@@ -64,16 +64,32 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
   const [modalCost, setModalCost] = useState<string | number>(() => {
     const p = products[0];
     const s = p ? getProductPriceStats(p) : null;
-    return s?.cheapestQuote?.hna || s?.cheapestQuote?.price || 100000;
+    return s?.cheapestQuote?.hna || s?.cheapestQuote?.price || 10000;
   });
 
   const parsedModal = parseCurrencyInput(modalCost);
 
-  const [d1Type, setD1Type] = useState<DiscountType>('percent');
-  const [d1Val, setD1Val] = useState<number>(10);
+  const [d1Type, setD1Type] = useState<DiscountType>(() => {
+    const p = products[0];
+    const s = p ? getProductPriceStats(p) : null;
+    return s?.cheapestQuote?.discount1Type || 'percent';
+  });
+  const [d1Val, setD1Val] = useState<number>(() => {
+    const p = products[0];
+    const s = p ? getProductPriceStats(p) : null;
+    return s?.cheapestQuote?.discount1Value ?? s?.cheapestQuote?.discountPercent ?? 0;
+  });
 
-  const [d2Type, setD2Type] = useState<DiscountType>('amount');
-  const [d2Val, setD2Val] = useState<number>(2000);
+  const [d2Type, setD2Type] = useState<DiscountType>(() => {
+    const p = products[0];
+    const s = p ? getProductPriceStats(p) : null;
+    return s?.cheapestQuote?.discount2Type || 'percent';
+  });
+  const [d2Val, setD2Val] = useState<number>(() => {
+    const p = products[0];
+    const s = p ? getProductPriceStats(p) : null;
+    return s?.cheapestQuote?.discount2Value || 0;
+  });
 
   const [ppnActive, setPpnActive] = useState<boolean>(settings.ppnEnabled !== false);
   const [ppnRate, setPpnRate] = useState<number>(settings.ppnPercent || 11);
@@ -82,7 +98,11 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
   const [marginVal, setMarginVal] = useState<number>(() => {
     return settings.marginType === 'amount' ? settings.marginAmountValue : settings.marginPercent;
   });
-  const [calcUnit, setCalcUnit] = useState<string>('');
+  const [calcUnit, setCalcUnit] = useState<string>(() => {
+    const p = products[0];
+    const s = p ? getProductPriceStats(p) : null;
+    return s?.cheapestQuote?.unit || p?.units?.[0]?.name || p?.defaultUnit || '';
+  });
 
   const productUnits = useMemo(() => {
     return normalizeProductUnits(activeProduct);

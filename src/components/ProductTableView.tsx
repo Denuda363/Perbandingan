@@ -417,30 +417,33 @@ export const ProductTableView: React.FC<ProductTableViewProps> = ({
                                               <span className="text-[10px] text-slate-500 font-sans ml-0.5">/{quoteConversions[0]?.name || product.defaultUnit}</span>
                                             </span>
                                           ) : (
-                                            <div className="text-right">
-                                              <span className="font-mono font-bold text-slate-900 block">
-                                                {formatRupiah(quoteConversions[0].costPrice)}
-                                                <span className="text-[10px] text-slate-500 font-sans ml-0.5">/{quoteConversions[0].name}</span>
-                                              </span>
-                                              <span className="font-mono font-bold text-blue-700 text-[11px] block">
-                                                {formatRupiah(quoteConversions[1].costPrice)}
-                                                <span className="text-[10px] text-slate-500 font-sans ml-0.5">/{quoteConversions[1].name}</span>
-                                              </span>
+                                            <div className="text-right space-y-0.5">
+                                              {quoteConversions.map((qc, qIdx) => (
+                                                <span key={qIdx} className={`font-mono block text-[11px] ${qIdx === 0 ? 'font-bold text-slate-900' : 'text-slate-600'}`}>
+                                                  {formatRupiah(qc.costPrice)}
+                                                  <span className="text-[10px] text-slate-500 font-sans ml-0.5">/{qc.name}</span>
+                                                </span>
+                                              ))}
                                             </div>
                                           )}
                                         </div>
 
-                                        <div className="flex items-baseline justify-between">
+                                        <div className="flex items-baseline justify-between pt-1 border-t border-slate-100">
                                           <span className="text-emerald-700 font-medium">Harga Jual:</span>
                                           {quoteConversions.length <= 1 ? (
                                             <span className="font-mono font-black text-emerald-800">
                                               {formatRupiah(quoteConversions[0]?.sellingPrice || quoteSelling.sellingPrice)}
+                                              <span className="text-[10px] text-slate-500 font-sans ml-0.5">/{quoteConversions[0]?.name || product.defaultUnit}</span>
                                             </span>
                                           ) : (
-                                            <span className="font-mono font-black text-emerald-800">
-                                              {formatRupiah(quoteConversions[0].sellingPrice)}
-                                              <span className="text-[10px] text-slate-500 font-sans ml-0.5">/{quoteConversions[0].name}</span>
-                                            </span>
+                                            <div className="text-right space-y-0.5">
+                                              {quoteConversions.map((qc, qIdx) => (
+                                                <span key={qIdx} className={`font-mono block text-[11px] ${qIdx === 0 ? 'font-black text-emerald-700' : 'font-semibold text-emerald-800'}`}>
+                                                  {formatRupiah(qc.sellingPrice)}
+                                                  <span className="text-[10px] text-slate-500 font-sans ml-0.5">/{qc.name}</span>
+                                                </span>
+                                              ))}
+                                            </div>
                                           )}
                                         </div>
                                       </div>

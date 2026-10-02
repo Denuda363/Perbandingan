@@ -310,9 +310,12 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     };
 
     let initialQuote;
+    const effectivePharmaNet = selectedQuoteTier.level === 1 
+      ? pharmaCalc.hargaJadiLembar 
+      : pharmaCalc.hargaJadiBox;
     const finalPrice = parsedPrice > 0 
       ? parsedPrice 
-      : (pharmaCalc.hargaJadiBox > 0 ? pharmaCalc.hargaJadiBox : parsedHna);
+      : (effectivePharmaNet > 0 ? effectivePharmaNet : parsedHna);
     if (!productToEdit && hasInitialQuote && quoteSupplier.trim() && finalPrice > 0) {
       const smallestPrice = Math.round(finalPrice / selectedQuoteRatio);
 
@@ -1026,11 +1029,15 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                         <span className="block text-[9px] font-sans font-bold text-amber-900">
                           HARGA JADI ({selectedQuoteTier.name})
                         </span>
-                        <span className="font-bold text-amber-950">{formatRupiah(pharmaCalc.hargaJadiBox)}</span>
+                        <span className="font-bold text-amber-950">
+                          {formatRupiah(selectedQuoteTier.level === 1 ? pharmaCalc.hargaJadiLembar : pharmaCalc.hargaJadiBox)}
+                        </span>
                       </div>
                       <div className="bg-purple-50 p-1.5 rounded border border-purple-200">
                         <span className="block text-[9px] font-sans font-semibold text-purple-700">HARGA JADI +PPN</span>
-                        <span className="font-bold text-purple-800">{formatRupiah(pharmaCalc.hargaJadiPlusPpn)}</span>
+                        <span className="font-bold text-purple-800">
+                          {formatRupiah(selectedQuoteTier.level === 1 ? pharmaCalc.hargaJadiLembarPlusPpn : pharmaCalc.hargaJadiPlusPpn)}
+                        </span>
                       </div>
                     </div>
 
@@ -1042,7 +1049,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                         </span>
                         <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
                           {activeProductUnits.map((tier, tIdx) => {
-                            const activePrice = parsedPrice > 0 ? parsedPrice : pharmaCalc.hargaJadiBox;
+                            const activePrice = parsedPrice > 0 
+                              ? parsedPrice 
+                              : (selectedQuoteTier.level === 1 ? pharmaCalc.hargaJadiLembar : pharmaCalc.hargaJadiBox);
                             const smallestUnitBase = activePrice / selectedQuoteRatio;
                             const tierPrice = Math.round(smallestUnitBase * tier.totalRatio);
                             const isCurrent = tier.name.toLowerCase() === selectedQuoteTier.name.toLowerCase();

@@ -334,19 +334,46 @@ export function getProductPriceStats(product: Product): ProductPriceStats {
     };
   }
 
-  const sorted = [...quotes].sort((a, b) => a.price - b.price);
+  const units = normalizeProductUnits(product);
+
+  // Helper untuk mendapatkan harga modal dinormalisasi per satuan terkecil (Level 1)
+  const getSmallestUnitPrice = (q: SupplierQuote): number => {
+    if (q.pricePerSubUnit && q.pricePerSubUnit > 0) return q.pricePerSubUnit;
+    if (q.unit) {
+      const matched = units.find((u) => u.name.toLowerCase() === q.unit.toLowerCase());
+      if (matched && matched.totalRatio > 0) {
+        return Math.round(q.price / matched.totalRatio);
+      }
+    }
+    return q.price;
+  };
+
+  const sorted = [...quotes].sort((a, b) => {
+    const aSmallest = getSmallestUnitPrice(a);
+    const bSmallest = getSmallestUnitPrice(b);
+    return aSmallest - bSmallest;
+  });
+
   const cheapest = sorted[0];
   const expensive = sorted[sorted.length - 1];
   const sum = sorted.reduce((acc, q) => acc + q.price, 0);
   const avg = Math.round(sum / sorted.length);
-  const diff = expensive.price - cheapest.price;
-  const savingsPct = expensive.price > 0 ? Math.round((diff / expensive.price) * 100) : 0;
+
+  const cheapestSmallest = getSmallestUnitPrice(cheapest);
+  const expensiveSmallest = getSmallestUnitPrice(expensive);
+  const diffSmallest = Math.max(0, expensiveSmallest - cheapestSmallest);
+  const savingsPct = expensiveSmallest > 0 ? Math.round((diffSmallest / expensiveSmallest) * 100) : 0;
+
+  const cheapestTierRatio = cheapest.unit
+    ? units.find((u) => u.name.toLowerCase() === cheapest.unit.toLowerCase())?.totalRatio || 1
+    : 1;
+  const difference = diffSmallest * cheapestTierRatio;
 
   return {
     minPrice: cheapest.price,
     maxPrice: expensive.price,
     avgPrice: avg,
-    difference: diff,
+    difference,
     savingsPercentage: savingsPct,
     cheapestQuote: cheapest,
     expensiveQuote: expensive,
@@ -454,9 +481,23 @@ export function calculatePharmaPricing({
     finalBox = formula.netCostAfterDiscounts;
   }
 
+  // Jika input adalah satuan terkecil (isSmallest === true):
+  // finalBox adalah harga satuan terkecil (hargaLembar)!
+  // Maka harga kemasan besar (hargaJadiBox) adalah hargaLembar * safeCount!
+  // Jika input adalah kemasan besar (isSmallest === false):
+  // finalBox adalah harga kemasan besar, dan hargaLembar = finalBox / safeCount!
   const hargaLembar = isSmallest ? finalBox : Math.round(finalBox / safeCount);
-  const hargaPlusPpn = Math.round(finalBox * (1 + ppnRate));
-  const hargaLembarPlusPpn = isSmallest ? hargaPlusPpn : Math.round(hargaLembar * (1 + ppnRate));
+  const hargaJadiBox = isSmallest ? Math.round(finalBox * safeCount) : finalBox;
+
+  const hargaPlusPpn = Math.round(hargaJadiBox * (1 + ppnRate));
+  const hargaLembarPlusPpn = Math.round(hargaLembar * (1 + ppnRate));
+
+  const sellingPriceLembar = isSmallest
+    ? formula.sellingPrice
+    : Math.round(formula.sellingPrice / safeCount);
+  const sellingPriceBox = isSmallest
+    ? Math.round(formula.sellingPrice * safeCount)
+    : formula.sellingPrice;
 
   return {
     hna: finalHna,
@@ -469,15 +510,15 @@ export function calculatePharmaPricing({
     discount2Value: d2Val,
     discount2Amount: formula.discount2Amount,
     totalDiscountAmount: formula.totalDiscountAmount,
-    hargaJadiBox: finalBox,
+    hargaJadiBox,
     hargaJadiLembar: hargaLembar,
     hargaJadiPlusPpn: hargaPlusPpn,
     hargaJadiLembarPlusPpn: hargaLembarPlusPpn,
     marginType,
     marginValue,
     marginAmount: formula.marginAmount,
-    sellingPriceBox: formula.sellingPrice,
-    sellingPriceLembar: formula.sellingPricePerSubUnit,
+    sellingPriceBox,
+    sellingPriceLembar,
     subUnitCount: safeCount,
     subUnitName: subUnitName || 'lembar',
   };
@@ -623,76 +664,23 @@ export function normalizeProductUnits(product: Partial<Product> | null | undefin
       }];
     }
 
-    // Periksa apakah format units sudah berurutan dari terkecil ke terbesar
-    // atau terbalik (kemasan terbesar dulu seperti Box lalu Lembar).
-    // Jika units[0] adalah kemasan besar (e.g. Box) dan units[1] adalah pecahan kecil (e.g. Lembar/Strip/Tablet)
-    // dengan ratio atau content > 1, kita balik agar Satuan Terkecil menjadi Satuan Utama (Level 1).
-    const firstTier = product.units[0];
-    const secondTier = product.units[1];
-    const firstTierLower = (firstTier.name || '').toLowerCase();
-    const secondTierLower = (secondTier.name || '').toLowerCase();
-
-    // Nama kemasan / wadah besar umum
-    const isContainer = (n: string) =>
-      ['box', 'dus', 'karton', 'botol', 'pack', 'slop', 'kaleng', 'renceng', 'blister', 'strip', 'jerigen'].some(c => n.includes(c));
-    // Nama satuan pecahan / eceran kecil umum
-    const isSmallUnit = (n: string) =>
-      ['lembar', 'tablet', 'kaplet', 'kapsul', 'biji', 'butir', 'pcs', 'sachet', 'ampul', 'vial', 'tube'].some(s => n.includes(s));
-
-    // Periksa apakah format units perlu dibalik agar Satuan Terkecil menjadi Satuan Utama (Level 1)
-    const isLegacyLargeFirst = 
-      product.units.length >= 2 && 
-      secondTier && 
-      (secondTier.content > 1 || secondTier.totalRatio > 1) &&
-      firstTier.content === 1 &&
-      (isContainer(firstTierLower) || isSmallUnit(secondTierLower));
-
-    if (isLegacyLargeFirst) {
-      // Ubah urutan: Satuan Terkecil menjadi Satuan Utama (Level 1), Satuan Kedua (Kemasan) menjadi Level 2
-      const smallestName = (secondTier.name || product.subUnitName || 'Lembar').trim();
-      const largerName = (firstTier.name || product.defaultUnit || 'Box').trim();
-      const contentRatio = Math.max(1, secondTier.content || product.subUnitCount || 10);
-
-      const result: ProductUnitTier[] = [
-        {
-          name: smallestName,
-          content: 1,
-          totalRatio: 1,
-          level: 1,
-        },
-        {
-          name: largerName,
-          content: contentRatio,
-          totalRatio: contentRatio,
-          level: 2,
-        },
-      ];
-
-      // Jika ada tingkat 3 (misal Karton)
-      if (product.units.length > 2) {
-        for (let i = 2; i < product.units.length; i++) {
-          const t = product.units[i];
-          const ratio = Math.max(1, t.totalRatio || (result[result.length - 1].totalRatio * (t.content || 1)));
-          result.push({
-            name: t.name.trim(),
-            content: t.content || 1,
-            totalRatio: ratio,
-            level: i + 1,
-          });
-        }
-      }
-
-      return result;
+    // Periksa apakah urutan units perlu dinormalisasi (satuan terkecil Level 1 sampai satuan terbesar)
+    // Standar sistem: Index 0 = Satuan Terkecil (Level 1, totalRatio = 1)
+    // Hanya jika eksplisit terbalik (kemasan besar di index 0 dengan totalRatio > index terakhir)
+    let sourceList = [...product.units];
+    const firstRatio = product.units[0].totalRatio;
+    const lastRatio = product.units[product.units.length - 1].totalRatio;
+    if (firstRatio !== undefined && lastRatio !== undefined && firstRatio > lastRatio && lastRatio === 1) {
+      sourceList = sourceList.reverse();
     }
 
-    // Jika sudah dimulai dari satuan terkecil
     let runningRatio = 1;
-    return product.units.map((u, idx) => {
+    return sourceList.map((u, idx) => {
       const level = idx + 1;
       const content = level === 1 ? 1 : Math.max(1, u.content || 1);
       runningRatio = level === 1 ? 1 : runningRatio * content;
       return {
-        name: (u.name || (level === 1 ? 'Lembar' : 'Box')).trim(),
+        name: (u.name || (level === 1 ? 'Satuan' : `Kemasan ${level}`)).trim(),
         content,
         totalRatio: runningRatio,
         level,

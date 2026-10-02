@@ -502,6 +502,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                             / {quoteConversions[0]?.name || quote.unit || product.defaultUnit}
                           </span>
 
+                          {quote.unit && quoteConversions.length > 1 && quote.unit.toLowerCase() !== quoteConversions[0]?.name.toLowerCase() && (
+                            <span className="text-[10px] text-slate-400 font-mono block">
+                              ({formatRupiah(quote.price)}/{quote.unit})
+                            </span>
+                          )}
+
                           {!isCheapest && priceDiffFromCheapest > 0 && (
                             <span className="text-[10px] font-semibold text-rose-600 block mt-0.5">
                               +{formatRupiah(priceDiffFromCheapest)} (+{pctFromCheapest}%)
@@ -513,7 +519,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                       {/* Selling price preview & quote action row */}
                       <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs gap-2">
                         <div className="text-[11px] text-slate-500">
-                          Jual Apotek: <strong className="text-emerald-800 font-mono">{formatRupiah(quoteSellingPrice)}</strong>
+                          Jual Apotek: <strong className="text-emerald-800 font-mono">{formatRupiah(quoteConversions[0]?.sellingPrice || quoteSellingPrice)}</strong>
+                          <span className="text-[10px] text-slate-500 ml-0.5 font-sans">
+                            /{quoteConversions[0]?.name || quote.unit || product.defaultUnit}
+                          </span>
                         </div>
                         <div className="flex items-center gap-2">
                           <button
