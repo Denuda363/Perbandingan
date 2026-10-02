@@ -16,7 +16,8 @@ import {
   Clock, 
   MoreVertical,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Eye
 } from 'lucide-react';
 import { Product, SupplierQuote, AppSettings } from '../types';
 import { 
@@ -38,6 +39,7 @@ interface ProductTableViewProps {
   onEditProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
   onSimulateOrder: (productId: string) => void;
+  onViewDetail?: (product: Product) => void;
 }
 
 export const ProductTableView: React.FC<ProductTableViewProps> = ({
@@ -49,6 +51,7 @@ export const ProductTableView: React.FC<ProductTableViewProps> = ({
   onEditProduct,
   onDeleteProduct,
   onSimulateOrder,
+  onViewDetail,
 }) => {
   const [expandedProductIds, setExpandedProductIds] = useState<Record<string, boolean>>({});
 
@@ -116,7 +119,7 @@ export const ProductTableView: React.FC<ProductTableViewProps> = ({
               const isExpanded = !!expandedProductIds[product.id];
               const cheapestSelling = stats.cheapestQuote ? calculateSellingPrice(stats.cheapestQuote.price, settings) : null;
               const bestConversions = stats.cheapestQuote && cheapestSelling
-                ? getProductUnitConversions(product, stats.cheapestQuote.price, stats.cheapestQuote.sellingPrice || cheapestSelling.sellingPrice)
+                ? getProductUnitConversions(product, stats.cheapestQuote.price, stats.cheapestQuote.sellingPrice || cheapestSelling.sellingPrice, stats.cheapestQuote.unit)
                 : [];
               const isMulti = isProductMultiUnit(product);
               const productUnits = normalizeProductUnits(product);
@@ -146,7 +149,16 @@ export const ProductTableView: React.FC<ProductTableViewProps> = ({
 
                     {/* Product Name & Pabrik */}
                     <td className="py-3 px-4">
-                      <div className="font-bold text-slate-900 text-sm leading-snug">
+                      <div 
+                        onClick={(e) => {
+                          if (onViewDetail) {
+                            e.stopPropagation();
+                            onViewDetail(product);
+                          }
+                        }}
+                        className="font-bold text-slate-900 text-sm leading-snug hover:text-emerald-700 transition-colors"
+                        title="Klik untuk rincian lengkap"
+                      >
                         {product.name}
                       </div>
                       <div className="flex items-center gap-1.5 text-slate-600 mt-0.5">
@@ -167,21 +179,35 @@ export const ProductTableView: React.FC<ProductTableViewProps> = ({
                     {/* Satuan & Kemasan */}
                     <td className="py-3 px-4">
                       {isMulti && productUnits.length > 1 ? (
-                        <div>
-                          <div className="font-semibold text-slate-800">
-                            {productUnits[0]?.name} <span className="text-emerald-700 text-[10px] font-bold bg-emerald-50 px-1 rounded border border-emerald-200">Utama</span>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200">
+                              Multi ({productUnits.length} Satuan)
+                            </span>
+                            <span className="text-xs font-semibold text-slate-800">
+                              {productUnits[0]?.name}
+                              <span className="text-[10px] text-emerald-700 font-normal ml-0.5">(Pokok)</span>
+                            </span>
                           </div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">
-                            1 {productUnits[1]?.name} = {productUnits[1]?.content} {productUnits[0]?.name}
+                          <div className="text-[11px] font-mono text-slate-600">
+                            {productUnits.map(u => u.name).join(' → ')}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            1 {productUnits[productUnits.length - 1]?.name} = {productUnits[productUnits.length - 1]?.totalRatio.toLocaleString('id-ID')} {productUnits[0]?.name}
                           </div>
                         </div>
                       ) : (
                         <div>
-                          <div className="font-semibold text-slate-800">
-                            {product.defaultUnit}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded border border-blue-200">
+                              Tunggal
+                            </span>
+                            <span className="font-semibold text-slate-800 text-xs">
+                              {product.defaultUnit}
+                            </span>
                           </div>
-                          <div className="text-[11px] text-slate-400">
-                            1 Satuan Tunggal
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            1 Satuan (Non-Pecahan)
                           </div>
                         </div>
                       )}
@@ -205,14 +231,11 @@ export const ProductTableView: React.FC<ProductTableViewProps> = ({
                               </span>
                             ) : (
                               <div className="space-y-0.5">
-                                <div className="font-mono font-bold text-slate-900 text-xs">
-                                  {formatRupiah(bestConversions[0].costPrice)}
-                                  <span className="text-[10px] text-slate-500 font-sans ml-0.5">/{bestConversions[0].name}</span>
-                                </div>
-                                <div className="font-mono font-bold text-blue-700 text-[11px]">
-                                  {formatRupiah(bestConversions[1].costPrice)}
-                                  <span className="text-[10px] text-slate-500 font-sans ml-0.5">/{bestConversions[1].name}</span>
-                                </div>
+                                {bestConversions.map((tier, tIdx) => (
+                                  <div key={tIdx} className={`font-mono text-xs ${tIdx === 0 ? 'font-bold text-slate-900' : 'text-slate-600'}`}>
+                                    {formatRupiah(tier.costPrice)} <span className="text-[10px] text-slate-500 font-sans">/{tier.name}</span>
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>
@@ -233,17 +256,14 @@ export const ProductTableView: React.FC<ProductTableViewProps> = ({
                             </span>
                           ) : (
                             <div className="space-y-0.5">
-                              <div className="font-mono font-black text-emerald-700 text-xs">
-                                {formatRupiah(bestConversions[0].sellingPrice)}
-                                <span className="text-[10px] text-slate-500 font-sans ml-0.5">/{bestConversions[0].name}</span>
-                              </div>
-                              <div className="font-mono font-black text-emerald-800 text-[11px]">
-                                {formatRupiah(bestConversions[1].sellingPrice)}
-                                <span className="text-[10px] text-slate-500 font-sans ml-0.5">/{bestConversions[1].name}</span>
-                              </div>
+                              {bestConversions.map((tier, tIdx) => (
+                                <div key={tIdx} className={`font-mono text-xs ${tIdx === 0 ? 'font-black text-emerald-700' : 'font-semibold text-emerald-800'}`}>
+                                  {formatRupiah(tier.sellingPrice)} <span className="text-[10px] text-slate-500 font-sans">/{tier.name}</span>
+                                </div>
+                              ))}
                             </div>
                           )}
-                          <div className="text-[10px] text-emerald-700 font-medium">
+                          <div className="text-[10px] text-emerald-700 font-medium mt-0.5">
                             +{settings.marginPercent}% margin
                           </div>
                         </div>
@@ -287,6 +307,16 @@ export const ProductTableView: React.FC<ProductTableViewProps> = ({
                     {/* Actions */}
                     <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1.5">
+                        {onViewDetail && (
+                          <button
+                            type="button"
+                            onClick={() => onViewDetail(product)}
+                            className="p-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 font-medium transition-colors cursor-pointer border border-slate-200"
+                            title="Lihat Detail Lengkap & Simulasi"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-slate-600" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => onAddQuote(product)}
@@ -354,7 +384,7 @@ export const ProductTableView: React.FC<ProductTableViewProps> = ({
                               {product.quotes.map((quote) => {
                                 const isCheapest = stats.cheapestQuote?.id === quote.id;
                                 const quoteSelling = calculateSellingPrice(quote.price, settings);
-                                const quoteConversions = getProductUnitConversions(product, quote.price, quote.sellingPrice || quoteSelling.sellingPrice);
+                                const quoteConversions = getProductUnitConversions(product, quote.price, quote.sellingPrice || quoteSelling.sellingPrice, quote.unit);
 
                                 return (
                                   <div

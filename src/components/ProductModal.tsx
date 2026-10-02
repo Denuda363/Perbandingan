@@ -80,6 +80,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   // Initial quote state (for new products)
   const [hasInitialQuote, setHasInitialQuote] = useState(false);
   const [quoteSupplier, setQuoteSupplier] = useState('');
+  const [quoteUnit, setQuoteUnit] = useState<string>('');
   const [quoteTargetUnit, setQuoteTargetUnit] = useState<'smallest' | 'second'>('smallest');
   const [quoteHna, setQuoteHna] = useState<string>('');
   const [quoteDiscount, setQuoteDiscount] = useState<string>('');
@@ -172,36 +173,25 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   // Auto-computed pack content description
   const autoPackContent = useMemo(() => {
     if (unitMode === 'single') {
-      return `1 ${singleUnit.trim() || 'Botol'}`;
+      return `Satuan Tunggal: 1 ${singleUnit.trim() || 'Botol'}`;
     }
-    if (activeProductUnits.length === 2) {
-      return `1 ${activeProductUnits[1].name} = ${activeProductUnits[1].content} ${activeProductUnits[0].name} (Satuan Utama: ${activeProductUnits[0].name})`;
-    }
-    if (activeProductUnits.length === 3) {
-      const u0 = activeProductUnits[0];
-      const u1 = activeProductUnits[1];
-      const u2 = activeProductUnits[2];
-      return `1 ${u2.name} = ${u2.content} ${u1.name} (${u2.totalRatio} ${u0.name}) (Satuan Utama: ${u0.name})`;
-    }
-    if (activeProductUnits.length >= 4) {
-      const u0 = activeProductUnits[0];
-      const middle = activeProductUnits.slice(1).map(u => `${u.content} ${u.name}`).join(' @ ');
-      const last = activeProductUnits[activeProductUnits.length - 1];
-      return `1 ${last.name} = ${middle} (Total: ${last.totalRatio} ${u0.name}) (Satuan Utama: ${u0.name})`;
-    }
-    return `1 ${activeProductUnits[0]?.name || 'Lembar'}`;
-  }, [unitMode, singleUnit, activeProductUnits]);
+    return formatProductUnitSummary({
+      defaultUnit: unitTiers[0]?.name || 'Box',
+      hasMultiUnits: true,
+      units: activeProductUnits,
+    });
+  }, [unitMode, singleUnit, activeProductUnits, unitTiers]);
 
-  // Handler to add a tier (up to 4 tiers)
+  // Handler to add a tier (supports more than 3 tiers, up to 10 tiers)
   const handleAddTier = () => {
-    if (unitTiers.length >= 4) return;
-    const defaultNames = ['Box', 'Strip', 'Tablet', 'Biji'];
-    const defaultContents = [1, 10, 10, 1];
+    if (unitTiers.length >= 10) return;
+    const defaultNames = ['Tablet', 'Strip', 'Box', 'Dus', 'Karton', 'Master Box', 'Palet', 'Kemasan 8'];
+    const defaultContents = [1, 10, 10, 10, 10, 10, 10, 10];
     const nextIdx = unitTiers.length;
     setUnitTiers((prev) => [
       ...prev,
       { 
-        name: defaultNames[nextIdx] || 'Satuan Eceran', 
+        name: defaultNames[nextIdx] || `Satuan Tingkat ${nextIdx + 1}`, 
         content: defaultContents[nextIdx] || 10 
       },
     ]);
@@ -234,19 +224,23 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const parsedDisk = parseFloat(quoteDiscount) || 0;
   const parsedPrice = parseCurrencyInput(quotePrice);
 
-  const mainSubCount = unitMode === 'multi' && activeProductUnits.length > 1
-    ? activeProductUnits[1].totalRatio
-    : 1;
-  const mainSubName = unitMode === 'multi' && activeProductUnits.length > 1
-    ? activeProductUnits[1].name
-    : (activeProductUnits[0]?.name || 'Satuan');
+  const selectedQuoteTier = useMemo(() => {
+    if (!activeProductUnits || activeProductUnits.length === 0) {
+      return { name: singleUnit || 'Botol', totalRatio: 1, level: 1, content: 1 };
+    }
+    return activeProductUnits.find(u => u.name.toLowerCase() === (quoteUnit || '').toLowerCase()) || activeProductUnits[0];
+  }, [activeProductUnits, quoteUnit, singleUnit]);
+
+  const selectedQuoteRatio = selectedQuoteTier.totalRatio || 1;
 
   const pharmaCalc = calculatePharmaPricing({
     hna: parsedHna,
     discountPercent: parsedDisk,
     hargaJadiBoxInput: parsedPrice > 0 ? parsedPrice : undefined,
-    subUnitCount: mainSubCount,
-    subUnitName: mainSubName,
+    subUnitCount: selectedQuoteRatio,
+    subUnitName: selectedQuoteTier.name,
+    unitRatio: selectedQuoteRatio,
+    isSmallestUnit: selectedQuoteTier.level === 1,
   });
 
   const handleHnaChange = (val: string) => {
@@ -320,16 +314,16 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       ? parsedPrice 
       : (pharmaCalc.hargaJadiBox > 0 ? pharmaCalc.hargaJadiBox : parsedHna);
     if (!productToEdit && hasInitialQuote && quoteSupplier.trim() && finalPrice > 0) {
-      const smallestUnitName = activeProductUnits[0]?.name || 'Satuan';
+      const smallestPrice = Math.round(finalPrice / selectedQuoteRatio);
 
       initialQuote = {
         supplierName: quoteSupplier.trim(),
-        price: finalPrice,
+        price: finalPrice, // Sesuai satuan penawaran yang dipilih
         hna: parsedHna > 0 ? parsedHna : finalPrice,
         discountPercent: parsedDisk > 0 ? parsedDisk : 0,
-        pricePerSubUnit: finalPrice,
+        pricePerSubUnit: smallestPrice, // Modal per satuan terkecil
         priceWithPpn: Math.round(finalPrice * 1.11),
-        unit: smallestUnitName,
+        unit: selectedQuoteTier.name,
         notes: quoteNotes.trim() || undefined,
       };
     }
@@ -545,30 +539,104 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               {/* OPSI 2: LEBIH DARI 1 SATUAN (MULTI-SATUAN BERTINGKAT) */}
               {unitMode === 'multi' && (
                 <div className="space-y-3">
+                  {/* Quick Preset Buttons for Pharmacy Multi-Units */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Template Multi-Satuan Cepat (Bisa Diubah Sesuai Kebutuhan):
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUnitTiers([
+                            { name: 'Tablet', content: 1 },
+                            { name: 'Strip', content: 10 },
+                            { name: 'Box', content: 10 },
+                            { name: 'Karton', content: 20 },
+                          ]);
+                        }}
+                        className="text-[11px] px-2.5 py-1 rounded-lg border border-purple-300 bg-purple-50 text-purple-900 hover:bg-purple-100 font-bold cursor-pointer transition-colors shadow-2xs"
+                      >
+                        📦 4 Satuan: Tablet → Strip → Box → Karton
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUnitTiers([
+                            { name: 'Kapsul', content: 1 },
+                            { name: 'Strip', content: 10 },
+                            { name: 'Box', content: 10 },
+                            { name: 'Dus', content: 20 },
+                          ]);
+                        }}
+                        className="text-[11px] px-2.5 py-1 rounded-lg border border-purple-300 bg-purple-50 text-purple-900 hover:bg-purple-100 font-bold cursor-pointer transition-colors shadow-2xs"
+                      >
+                        📦 4 Satuan: Kapsul → Strip → Box → Dus
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUnitTiers([
+                            { name: 'Tablet', content: 1 },
+                            { name: 'Strip', content: 10 },
+                            { name: 'Box', content: 10 },
+                          ]);
+                        }}
+                        className="text-[11px] px-2.5 py-1 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 font-bold cursor-pointer transition-colors shadow-2xs"
+                      >
+                        💊 3 Satuan: Tablet → Strip → Box
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUnitTiers([
+                            { name: 'Strip', content: 1 },
+                            { name: 'Box', content: 10 },
+                          ]);
+                        }}
+                        className="text-[11px] px-2.5 py-1 rounded-lg border border-blue-300 bg-blue-50 text-blue-900 hover:bg-blue-100 font-bold cursor-pointer transition-colors shadow-2xs"
+                      >
+                        📑 2 Satuan: Strip → Box
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUnitTiers([
+                            { name: 'Botol', content: 1 },
+                            { name: 'Karton', content: 24 },
+                          ]);
+                        }}
+                        className="text-[11px] px-2.5 py-1 rounded-lg border border-teal-300 bg-teal-50 text-teal-900 hover:bg-teal-100 font-bold cursor-pointer transition-colors shadow-2xs"
+                      >
+                        🧴 2 Satuan: Botol → Karton
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="space-y-2.5">
                     {/* Tier 1: Satuan Utama (Satuan Terkecil) */}
                     <div className="bg-white p-3.5 rounded-xl border-2 border-emerald-300/80 shadow-2xs space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
                           <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center font-bold">1</span>
-                          Satuan Utama (Satuan Terkecil)
+                          Satuan Utama / Terkecil (Eceran Pokok)
                         </span>
                         <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold">
                           Acuan Dasar Perhitungan
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-600">
-                        Satuan terkecil adalah satuan utama (contoh: Lembar, Strip, Tablet, Kapsul, Pcs).
+                        Satuan terkecil adalah satuan utama (contoh: Tablet, Kapsul, Lembar, Strip, Pcs).
                       </p>
                       <input
                         type="text"
-                        placeholder="Contoh: Lembar, Strip, Tablet, Kapsul"
+                        placeholder="Contoh: Tablet, Kapsul, Lembar, Strip"
                         value={unitTiers[0]?.name || ''}
                         onChange={(e) => handleUpdateTierName(0, e.target.value)}
                         className="w-full px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white text-slate-900"
                       />
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {COMMON_SUB_UNITS.map((u) => (
+                        {COMMON_BASE_UNITS.concat(COMMON_SUB_UNITS).slice(0, 8).map((u) => (
                           <button
                             key={u}
                             type="button"
@@ -590,18 +658,18 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
                           <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">2</span>
-                          Satuan Kedua (Kemasan Berisi Satuan Utama)
+                          Satuan Tingkat 2 (Kemasan Berisi Satuan Pokok)
                         </span>
                         <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 font-medium">
-                          Harga Dikonversi dari Satuan Terkecil
+                          Dikonversi Otomatis
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[10px] text-slate-500 mb-0.5">Nama Satuan Kedua</label>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Nama Satuan Tingkat 2</label>
                           <input
                             type="text"
-                            placeholder="Box / Dus / Pack"
+                            placeholder="Strip / Blister / Box / Botol"
                             value={unitTiers[1]?.name || ''}
                             onChange={(e) => handleUpdateTierName(1, e.target.value)}
                             className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white text-slate-900"
@@ -609,14 +677,14 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                         </div>
                         <div>
                           <label className="block text-[10px] text-slate-500 mb-0.5">
-                            Isi ({unitTiers[0]?.name || 'Lembar'} per {unitTiers[1]?.name || 'Box'})
+                            Isi ({unitTiers[0]?.name || 'Satuan Pokok'} per {unitTiers[1]?.name || 'Satuan 2'})
                           </label>
                           <input
                             type="number"
                             min="1"
                             value={unitTiers[1]?.content || 10}
                             onChange={(e) => handleUpdateTierContent(1, parseInt(e.target.value) || 1)}
-                            className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white"
+                            className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white font-mono"
                           />
                         </div>
                       </div>
@@ -624,17 +692,15 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                       {/* Info Box Contoh Konversi */}
                       <div className="p-2.5 bg-blue-50/80 border border-blue-200/90 rounded-xl text-[11px] text-blue-900 leading-relaxed">
                         <div className="font-bold flex items-center gap-1">
-                          <span>1 {unitTiers[1]?.name || 'Box'} = {unitTiers[1]?.content || 10} {unitTiers[0]?.name || 'Lembar'}</span>
+                          <span>1 {unitTiers[1]?.name || 'Satuan 2'} = {unitTiers[1]?.content || 10} {unitTiers[0]?.name || 'Satuan Pokok'}</span>
                         </div>
                         <p className="text-[10px] text-blue-700 mt-0.5">
-                          Harga 1 {unitTiers[1]?.name || 'Box'} dihitung otomatis: <strong>{unitTiers[1]?.content || 10} × Harga {unitTiers[0]?.name || 'Lembar'}</strong>.
-                          <br />
-                          <em>Misal: Satuan kecil {unitTiers[0]?.name || 'Lembar'} = Rp 1.000, maka 1 {unitTiers[1]?.name || 'Box'} = Rp {(1000 * (unitTiers[1]?.content || 10)).toLocaleString('id-ID')}.</em>
+                          Harga 1 {unitTiers[1]?.name || 'Satuan 2'} dihitung otomatis: <strong>{unitTiers[1]?.content || 10} × Harga {unitTiers[0]?.name || 'Satuan Pokok'}</strong>.
                         </p>
                       </div>
 
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {COMMON_MAIN_UNITS.map((u) => (
+                        {COMMON_SUB_UNITS.concat(COMMON_MAIN_UNITS).slice(0, 8).map((u) => (
                           <button
                             key={u}
                             type="button"
@@ -651,7 +717,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Tier 3 & Seterusnya (Satuan Pecahan Berikutnya) */}
+                    {/* Tier 3, 4, dst. (Mendukung Lebih dari 3 Satuan!) */}
                     {unitTiers.slice(2).map((tier, tierOffset) => {
                       const tierIdx = tierOffset + 2;
                       const levelNum = tierIdx + 1;
@@ -664,7 +730,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                               <span className="w-4 h-4 rounded-full bg-purple-600 text-white text-[10px] flex items-center justify-center font-bold">
                                 {levelNum}
                               </span>
-                              Satuan Tingkat {levelNum} ({tier.name || `Pecahan ${levelNum - 1}`})
+                              Satuan Tingkat {levelNum} ({tier.name || `Tingkat ${levelNum}`})
                             </span>
                             <button
                               type="button"
@@ -678,30 +744,35 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <label className="block text-[10px] text-slate-500 mb-0.5">
-                                Isi per {prevTier?.name || 'Satuan Sebelumnya'}
-                              </label>
-                              <input
-                                type="number"
-                                min="1"
-                                value={tier.content || 1}
-                                onChange={(e) => handleUpdateTierContent(tierIdx, parseInt(e.target.value) || 1)}
-                                className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-slate-500 mb-0.5">Nama Satuan</label>
+                              <label className="block text-[10px] text-slate-500 mb-0.5">Nama Satuan Tingkat {levelNum}</label>
                               <input
                                 type="text"
-                                placeholder="Tablet / Kapsul / Kaplet"
+                                placeholder={levelNum === 3 ? "Box / Pack" : "Dus / Karton / Master Box"}
                                 value={tier.name || ''}
                                 onChange={(e) => handleUpdateTierName(tierIdx, e.target.value)}
                                 className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white text-slate-900"
                               />
                             </div>
+                            <div>
+                              <label className="block text-[10px] text-slate-500 mb-0.5">
+                                Isi (Berapa {prevTier?.name || `Tingkat ${levelNum - 1}`})
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={tier.content || 10}
+                                onChange={(e) => handleUpdateTierContent(tierIdx, parseInt(e.target.value) || 1)}
+                                className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white font-mono"
+                              />
+                            </div>
                           </div>
+                          
+                          <div className="text-[10px] text-purple-700 bg-purple-50 p-1.5 rounded-lg">
+                            1 {tier.name || `Tingkat ${levelNum}`} = {tier.content} {prevTier?.name || `Tingkat ${levelNum - 1}`}
+                          </div>
+
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {COMMON_BASE_UNITS.map((u) => (
+                            {['Box', 'Dus', 'Karton', 'Pack', 'Slop', 'Master Box', 'Palet'].map((u) => (
                               <button
                                 key={u}
                                 type="button"
@@ -720,25 +791,25 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                       );
                     })}
 
-                    {/* Tombol Tambah Tingkat jika belum 4 tingkat */}
-                    {unitTiers.length < 4 && (
+                    {/* Tombol Tambah Tingkat (Mendukung Lebih Dari 3 Satuan!) */}
+                    {unitTiers.length < 10 && (
                       <button
                         type="button"
                         onClick={handleAddTier}
-                        className="w-full py-2 border-2 border-dashed border-slate-300 hover:border-emerald-500 hover:bg-emerald-50/50 rounded-xl text-xs font-semibold text-slate-600 hover:text-emerald-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        className="w-full py-2.5 border-2 border-dashed border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50/60 rounded-xl text-xs font-bold text-emerald-800 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>+ Tambah Satuan Pecahan Berikutnya (Contoh: {unitTiers.length === 2 ? 'Tablet/Kapsul per Strip' : 'Biji/Butir/Ml'})</span>
+                        <Plus className="w-4 h-4 text-emerald-700" />
+                        <span>+ Tambah Tingkat Satuan (Tingkat {unitTiers.length + 1}) — Mendukung Lebih dari 3 Satuan</span>
                       </button>
                     )}
                   </div>
 
                   {/* Formula Preview Banner & Live Calculation */}
-                  <div className="bg-emerald-950 text-white rounded-xl p-3 border border-emerald-500/30 space-y-2">
+                  <div className="bg-emerald-950 text-white rounded-xl p-3.5 border border-emerald-500/30 space-y-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-bold text-emerald-300 uppercase tracking-wider text-[10px] flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                        Acuan Konversi Harga Otomatis:
+                        Rantai Konversi Satuan ({activeProductUnits.length} Tingkat):
                       </span>
                     </div>
                     <div className="text-xs font-mono font-bold text-emerald-100">
@@ -747,17 +818,25 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
                     {/* Live price conversion sample */}
                     {parsedPrice > 0 && (
-                      <div className="pt-2 border-t border-white/10 grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] font-mono">
-                        {activeProductUnits.map((u, uIdx) => (
-                          <div key={uIdx} className="bg-white/10 p-2 rounded-lg">
-                            <span className="block text-[9px] uppercase font-sans text-slate-300">
-                              Harga per {u.name}
-                            </span>
-                            <span className="font-black text-amber-300">
-                              {formatRupiah(Math.round(parsedPrice / u.totalRatio))}
-                            </span>
-                          </div>
-                        ))}
+                      <div className="pt-2 border-t border-white/10 space-y-1.5">
+                        <span className="text-[10px] text-emerald-300 block font-sans">
+                          Kalkulasi Harga Beli per Satuan (Acuan Dasar Rp {parsedPrice.toLocaleString('id-ID')}):
+                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                          {activeProductUnits.map((u, uIdx) => (
+                            <div key={uIdx} className="bg-white/10 p-2 rounded-lg">
+                              <span className="block text-[9px] uppercase font-sans text-slate-300">
+                                Tingkat {u.level} ({u.name})
+                              </span>
+                              <span className="font-black text-amber-300">
+                                {formatRupiah(Math.round(parsedPrice * u.totalRatio))}
+                              </span>
+                              <span className="block text-[9px] text-slate-400 font-sans mt-0.5">
+                                = {u.totalRatio} {activeProductUnits[0]?.name}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -847,11 +926,45 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     </datalist>
                   </div>
 
-                  {/* Pricing Inputs: HNA, DISK %, HARGA JADI BOX */}
+                  {/* Pilihan Satuan Penawaran yang diinput */}
+                  {unitMode === 'multi' && activeProductUnits.length > 1 && (
+                    <div className="bg-amber-100/70 p-2.5 rounded-lg border border-amber-300 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-amber-950 flex items-center gap-1">
+                          <Layers className="w-3.5 h-3.5 text-amber-800" />
+                          <span>Pilih Satuan Penawaran yang Diinput:</span>
+                        </label>
+                        <span className="text-[10px] text-amber-900 font-bold">
+                          Acuan: {selectedQuoteTier.name} (Tingkat {selectedQuoteTier.level})
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {activeProductUnits.map((u) => {
+                          const isSel = (quoteUnit || activeProductUnits[0]?.name)?.toLowerCase() === u.name.toLowerCase();
+                          return (
+                            <button
+                              key={u.name}
+                              type="button"
+                              onClick={() => setQuoteUnit(u.name)}
+                              className={`text-xs px-2.5 py-1 rounded-md border font-bold cursor-pointer transition-colors ${
+                                isSel
+                                  ? 'bg-amber-700 text-white border-amber-700 shadow-2xs'
+                                  : 'bg-white text-slate-700 border-slate-300 hover:bg-amber-50'
+                              }`}
+                            >
+                              {u.name} (T{u.level})
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pricing Inputs: HNA, DISK %, HARGA JADI PER SATUAN */}
                   <div className="grid grid-cols-3 gap-2">
                     <div>
                       <label className="block text-[10px] font-semibold text-slate-700 mb-0.5">
-                        HNA (Rp)
+                        HNA (per {selectedQuoteTier.name})
                       </label>
                       <input
                         type="text"
@@ -881,7 +994,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
                     <div>
                       <label className="block text-[10px] font-bold text-slate-800 mb-0.5">
-                        HARGA JADI (box)
+                        HARGA JADI ({selectedQuoteTier.name})
                       </label>
                       <input
                         type="text"
@@ -894,11 +1007,11 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Live Pharma Price Summary Table Matching User Image */}
+                  {/* Live Pharma Price Summary Table */}
                   <div className="bg-white border border-amber-300 rounded-lg p-2.5 text-xs overflow-x-auto">
                     <div className="text-[10px] font-bold text-amber-900 mb-1.5 flex items-center gap-1">
                       <Calculator className="w-3 h-3 text-amber-700" />
-                      <span>Hasil Perhitungan Otomatis:</span>
+                      <span>Hasil Perhitungan Otomatis (per {selectedQuoteTier.name}):</span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-center font-mono text-[11px] min-w-[340px]">
                       <div className="bg-slate-50 p-1.5 rounded border border-slate-200">
@@ -911,7 +1024,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                       </div>
                       <div className="bg-amber-100 p-1.5 rounded border border-amber-300">
                         <span className="block text-[9px] font-sans font-bold text-amber-900">
-                          HARGA JADI ({activeProductUnits[0]?.name || 'Utama'})
+                          HARGA JADI ({selectedQuoteTier.name})
                         </span>
                         <span className="font-bold text-amber-950">{formatRupiah(pharmaCalc.hargaJadiBox)}</span>
                       </div>
@@ -921,15 +1034,33 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Breakdown per Satuan Turunan jika multi-satuan */}
+                    {/* Breakdown Konversi ke Semua Satuan (Tidak Terbalik) */}
                     {unitMode === 'multi' && activeProductUnits.length > 1 && (
-                      <div className="mt-2 pt-2 border-t border-amber-200 flex items-center gap-2 flex-wrap text-[11px]">
-                        <span className="text-[10px] font-bold text-slate-600">Konversi Satuan:</span>
-                        {activeProductUnits.slice(1).map((tier, tIdx) => (
-                          <span key={tIdx} className="bg-blue-50 text-blue-800 font-bold px-2 py-0.5 rounded border border-blue-200">
-                            ~{formatRupiah(Math.round((parsedPrice > 0 ? parsedPrice : pharmaCalc.hargaJadiBox) * tier.totalRatio))} / {tier.name}
-                          </span>
-                        ))}
+                      <div className="mt-2 pt-2 border-t border-amber-200 space-y-1">
+                        <span className="text-[10px] font-bold text-slate-600 block">
+                          Konversi Satuan Akurat ({activeProductUnits.length} Tingkat):
+                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                          {activeProductUnits.map((tier, tIdx) => {
+                            const activePrice = parsedPrice > 0 ? parsedPrice : pharmaCalc.hargaJadiBox;
+                            const smallestUnitBase = activePrice / selectedQuoteRatio;
+                            const tierPrice = Math.round(smallestUnitBase * tier.totalRatio);
+                            const isCurrent = tier.name.toLowerCase() === selectedQuoteTier.name.toLowerCase();
+
+                            return (
+                              <span
+                                key={tIdx}
+                                className={`px-2 py-0.5 rounded border font-mono font-bold ${
+                                  isCurrent
+                                    ? 'bg-amber-600 text-white border-amber-700'
+                                    : 'bg-blue-50 text-blue-800 border-blue-200'
+                                }`}
+                              >
+                                {formatRupiah(tierPrice)} / {tier.name}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>

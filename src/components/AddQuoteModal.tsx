@@ -197,6 +197,16 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
   const parsedMarginVal = parseFloat(marginValue) || 0;
   const parsedDirect = parseCurrencyInput(directPrice);
 
+  // Active selected tier and ratio based on chosen unit
+  const selectedTier = useMemo(() => {
+    if (!productUnits || productUnits.length === 0) {
+      return { name: unit || activeProduct?.defaultUnit || 'Satuan', totalRatio: 1, level: 1, content: 1 };
+    }
+    return productUnits.find((u) => u.name.toLowerCase() === (unit || '').toLowerCase()) || productUnits[0];
+  }, [productUnits, unit, activeProduct]);
+
+  const selectedTierRatio = selectedTier.totalRatio || 1;
+
   const formulaCalc = useMemo(() => {
     const effectiveBaseModal = priceInputMode === 'formula' ? parsedModal : parsedDirect;
 
@@ -213,6 +223,9 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
       roundingOption: settings.roundingOption,
       subUnitCount: subCount,
       subUnitName: subName,
+      inputUnitRatio: selectedTierRatio,
+      inputUnitName: selectedTier.name,
+      isSmallestUnit: selectedTier.level === 1,
     });
   }, [
     priceInputMode,
@@ -229,21 +242,25 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
     settings.roundingOption,
     subCount,
     subName,
+    selectedTierRatio,
+    selectedTier.name,
+    selectedTier.level,
   ]);
 
-  // Effective net purchase cost per box
+  // Effective net purchase cost per selected unit
   const finalEffectiveNetPrice = priceInputMode === 'formula'
     ? (parsedModal >= 0 ? formulaCalc.netCostAfterDiscounts : 0)
     : parsedDirect;
 
-  // Multi-tier unit conversions for the active product
+  // Multi-tier unit conversions for the active product using the selected unit as source
   const unitConversions = useMemo(() => {
     return getProductUnitConversions(
       activeProduct,
       formulaCalc.netCostAfterDiscounts,
-      formulaCalc.sellingPrice
+      formulaCalc.sellingPrice,
+      selectedTier.name
     );
-  }, [activeProduct, formulaCalc.netCostAfterDiscounts, formulaCalc.sellingPrice]);
+  }, [activeProduct, formulaCalc.netCostAfterDiscounts, formulaCalc.sellingPrice, selectedTier.name]);
 
   // Filter products for search selector
   const filteredProducts = useMemo(() => {
@@ -301,31 +318,26 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
       ? (parsedModal > 0 ? formulaCalc.netCostAfterDiscounts : parsedDirect)
       : parsedDirect;
 
-    const finalBoxPrice = effectivePrice > 0 
+    const finalPrice = effectivePrice > 0 
       ? effectivePrice 
       : (parsedModal > 0 ? parsedModal : parsedDirect);
 
-    if (finalBoxPrice <= 0 && !modalCost.trim() && !directPrice.trim()) return;
+    if (finalPrice <= 0 && !modalCost.trim() && !directPrice.trim()) return;
 
     const matchedSupplier = suppliers.find(
       (s) => s.name.toLowerCase() === supplierName.trim().toLowerCase()
     );
 
-    const mainTierRatio = productUnits[1]?.totalRatio || 1;
-    const finalPricePerSub = isMulti && productUnits.length > 1
-      ? Math.round(finalBoxPrice / mainTierRatio)
-      : finalBoxPrice;
-
-    const finalSellingPerSub = isMulti && productUnits.length > 1
-      ? Math.round(formulaCalc.sellingPrice / mainTierRatio)
-      : formulaCalc.sellingPrice;
+    // Modal per satuan terkecil (Level 1):
+    const finalPricePerSub = Math.round(formulaCalc.costPerSmallestUnit || (finalPrice / selectedTierRatio));
+    const finalSellingPerSub = Math.round(formulaCalc.sellingPricePerSmallestUnit || (formulaCalc.sellingPrice / selectedTierRatio));
 
     const quoteData: Partial<SupplierQuote> = {
       id: quoteToEdit ? quoteToEdit.id : `q-${Date.now()}`,
       supplierId: matchedSupplier ? matchedSupplier.id : `sup-${Date.now()}`,
       supplierName: supplierName.trim(),
-      price: finalBoxPrice, // Modal bersih setelah diskon
-      hna: parsedModal > 0 ? parsedModal : finalBoxPrice,
+      price: finalPrice, // Modal bersih sesuai satuan penawaran yang dipilih
+      hna: parsedModal > 0 ? parsedModal : finalPrice,
       discount1Type,
       discount1Value: parsedD1Val,
       discountPercent: discount1Type === 'percent' ? parsedD1Val : 0,
@@ -339,7 +351,7 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
       sellingPrice: formulaCalc.sellingPrice,
       pricePerSubUnit: finalPricePerSub,
       sellingPricePerSubUnit: finalSellingPerSub,
-      unit: unit || activeProduct?.defaultUnit || 'Box',
+      unit: selectedTier.name,
       moq: parseInt(moq) || 1,
       leadTimeDays: parseInt(leadTimeDays) || 0,
       notes: notes.trim() || undefined,
@@ -620,6 +632,41 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
             )}
           </div>
 
+          {/* 2b. PILIHAN SATUAN PENAWARAN (TUNGGAL ATAU MULTI-SATUAN) */}
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Satuan Penawaran Supplier:</span>
+              </label>
+              <span className="text-[11px] text-slate-500">
+                {isMulti ? `Produk memiliki ${productUnits.length} satuan` : 'Satuan Tunggal'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {productUnits.map((u) => {
+                const isSelected = (unit || activeProduct?.defaultUnit || '')?.toLowerCase() === u.name.toLowerCase();
+                return (
+                  <button
+                    key={u.name}
+                    type="button"
+                    onClick={() => setUnit(u.name)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border font-bold cursor-pointer transition-colors flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{u.name}</span>
+                    <span className={`text-[10px] px-1 py-0.2 rounded font-normal ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      Tingkat {u.level}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* 3. METODE PERHITUNGAN: (Modal - Diskon 1 - Diskon 2 + PPN) + Margin */}
           <div className="bg-gradient-to-br from-emerald-50/60 to-teal-50/40 border border-emerald-300/80 rounded-2xl p-3.5 sm:p-4 space-y-3.5">
             
@@ -664,7 +711,7 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                      <span>1. Modal Dasar / HNA (per {unit || activeProduct?.defaultUnit || 'Box'})</span>
+                      <span>1. Modal Dasar / HNA (per {selectedTier.name})</span>
                       <span className="text-rose-500">*</span>
                     </label>
                     <span className="text-xs font-bold text-emerald-700 font-mono">
@@ -1035,7 +1082,7 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-bold text-slate-900">
-                      Harga Jadi Beli Langsung (per {unit || activeProduct?.defaultUnit || 'Box'}) <span className="text-rose-500">*</span>
+                      Harga Jadi Beli Langsung (per {selectedTier.name}) <span className="text-rose-500">*</span>
                     </label>
                     <span className="text-xs font-bold text-emerald-700 font-mono">
                       {parsedDirect > 0 ? formatRupiah(parsedDirect) : ''}
@@ -1064,10 +1111,10 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
               <div className="flex items-center justify-between text-xs pb-2 border-b border-white/10">
                 <span className="font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
                   <Calculator className="w-3.5 h-3.5 text-emerald-400" />
-                  Rincian Hasil Rumus Margin
+                  Rincian Hasil Rumus Margin (per {selectedTier.name})
                 </span>
                 <span className="text-[11px] text-slate-400">
-                  {activeProduct?.packContent || `1 Box = ${subCount} ${subName}`}
+                  {activeProduct?.packContent || formatProductUnitSummary(activeProduct)}
                 </span>
               </div>
 
@@ -1082,9 +1129,12 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
                     {formatRupiah(formulaCalc.netCostAfterDiscounts)}
                   </span>
                   <span className="block text-[10px] text-slate-400">
-                    {isMulti 
-                      ? `~${formatRupiah(formulaCalc.costPerSubUnit)}/${subName}`
-                      : `per ${productUnits[0]?.name || 'Satuan'}`}
+                    per {selectedTier.name}
+                    {selectedTier.level > 1 && (
+                      <span className="block text-emerald-300 font-mono">
+                        ~{formatRupiah(formulaCalc.costPerSmallestUnit)}/{productUnits[0]?.name}
+                      </span>
+                    )}
                   </span>
                 </div>
 
@@ -1123,9 +1173,12 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
                     {formatRupiah(formulaCalc.sellingPrice)}
                   </span>
                   <span className="block text-[10px] text-amber-200/90 font-bold">
-                    {isMulti 
-                      ? `~${formatRupiah(formulaCalc.sellingPricePerSubUnit)}/${subName}`
-                      : `per ${productUnits[0]?.name || 'Satuan'}`}
+                    per {selectedTier.name}
+                    {selectedTier.level > 1 && (
+                      <span className="block text-emerald-300 font-mono">
+                        ~{formatRupiah(formulaCalc.sellingPricePerSmallestUnit)}/{productUnits[0]?.name}
+                      </span>
+                    )}
                   </span>
                 </div>
               </div>

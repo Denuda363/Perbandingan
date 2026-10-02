@@ -82,6 +82,7 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
   const [marginVal, setMarginVal] = useState<number>(() => {
     return settings.marginType === 'amount' ? settings.marginAmountValue : settings.marginPercent;
   });
+  const [calcUnit, setCalcUnit] = useState<string>('');
 
   const productUnits = useMemo(() => {
     return normalizeProductUnits(activeProduct);
@@ -90,6 +91,15 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
   const isMulti = useMemo(() => {
     return isProductMultiUnit(activeProduct);
   }, [activeProduct]);
+
+  const selectedCalcTier = useMemo(() => {
+    if (!productUnits || productUnits.length === 0) {
+      return { name: activeProduct?.defaultUnit || 'Satuan', totalRatio: 1, level: 1, content: 1 };
+    }
+    return productUnits.find((u) => u.name.toLowerCase() === (calcUnit || '').toLowerCase()) || productUnits[0];
+  }, [productUnits, calcUnit, activeProduct]);
+
+  const selectedCalcRatio = selectedCalcTier.totalRatio || 1;
 
   const subCount = isMulti && productUnits.length > 1 ? productUnits[1].totalRatio : 1;
   const subName = isMulti && productUnits.length > 1 ? productUnits[1].name : (productUnits[0]?.name || 'Satuan');
@@ -101,6 +111,11 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
     const bestQ = pStats.cheapestQuote;
     if (bestQ) {
       setModalCost(bestQ.hna || bestQ.price);
+      if (bestQ.unit) {
+        setCalcUnit(bestQ.unit);
+      } else {
+        setCalcUnit(prod.units?.[0]?.name || prod.defaultUnit);
+      }
       if (bestQ.discount1Value !== undefined) {
         setD1Val(bestQ.discount1Value);
         setD1Type(bestQ.discount1Type || 'percent');
@@ -122,6 +137,8 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
         setMarginVal(bestQ.marginValue);
         setMarginKind(bestQ.marginType || 'percent');
       }
+    } else {
+      setCalcUnit(prod.units?.[0]?.name || prod.defaultUnit);
     }
   };
 
@@ -140,6 +157,9 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
       roundingOption: settings.roundingOption,
       subUnitCount: subCount,
       subUnitName: subName,
+      inputUnitRatio: selectedCalcRatio,
+      inputUnitName: selectedCalcTier.name,
+      isSmallestUnit: selectedCalcTier.level === 1,
     });
   }, [
     parsedModal,
@@ -154,15 +174,19 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
     settings.roundingOption,
     subCount,
     subName,
+    selectedCalcRatio,
+    selectedCalcTier.name,
+    selectedCalcTier.level,
   ]);
 
   const unitConversions = useMemo(() => {
     return getProductUnitConversions(
       activeProduct,
       formulaResult.netCostAfterDiscounts,
-      formulaResult.sellingPrice
+      formulaResult.sellingPrice,
+      selectedCalcTier.name
     );
-  }, [activeProduct, formulaResult.netCostAfterDiscounts, formulaResult.sellingPrice]);
+  }, [activeProduct, formulaResult.netCostAfterDiscounts, formulaResult.sellingPrice, selectedCalcTier.name]);
 
   // BASKET SIMULATION STATE
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
@@ -372,11 +396,48 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
                 </span>
               </div>
 
+              {/* Unit Selector for Calculation */}
+              {productUnits.length > 1 && (
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <label className="font-bold text-slate-800 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Satuan yang Dihitung:</span>
+                    </label>
+                    <span className="text-[11px] text-slate-500">
+                      Acuan: <strong>{selectedCalcTier.name}</strong> (Tingkat {selectedCalcTier.level})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {productUnits.map((u) => {
+                      const isSel = (calcUnit || productUnits[0]?.name)?.toLowerCase() === u.name.toLowerCase();
+                      return (
+                        <button
+                          key={u.name}
+                          type="button"
+                          onClick={() => setCalcUnit(u.name)}
+                          className={`text-xs px-3 py-1.5 rounded-lg border font-bold cursor-pointer transition-colors ${
+                            isSel
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span>{u.name}</span>
+                          <span className={`ml-1 text-[10px] px-1 rounded font-normal ${isSel ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                            T{u.level}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* 1. Modal Dasar / HNA */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-slate-900">
-                    1. Modal Pokok / HNA (per {activeProduct?.defaultUnit || 'Box'}):
+                    1. Modal Pokok / HNA (per {selectedCalcTier.name}):
                   </label>
                   <span className="text-xs font-mono font-bold text-slate-700">
                     {formatRupiah(parsedModal)}
@@ -737,11 +798,11 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-300" />
                     <span className="font-bold text-xs uppercase tracking-wider text-emerald-300">
-                      Rincian Rumus Step-by-Step
+                      Rincian Rumus Step-by-Step (per {selectedCalcTier.name})
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-300">
-                    1 Box = {subCount} {subName}
+                    {formatProductUnitSummary(activeProduct)}
                   </span>
                 </div>
 
@@ -800,27 +861,25 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
                       {formatRupiah(formulaResult.sellingPrice)}
                     </span>
                     <span className="text-xs text-emerald-300 font-medium">
-                      per {activeProduct?.defaultUnit || 'Box'}
+                      per {selectedCalcTier.name}
                     </span>
                   </div>
 
                   <div className="text-right bg-black/40 p-2.5 rounded-lg border border-white/10">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                      {isMulti ? `Per ${subName}` : `Per ${productUnits[0]?.name || 'Satuan'}`}
+                      Per {productUnits[0]?.name || 'Satuan'}
                     </span>
                     <span className="text-base font-bold text-white font-mono block">
-                      {isMulti 
-                        ? formatRupiah(formulaResult.sellingPricePerSubUnit)
-                        : formatRupiah(formulaResult.sellingPrice)}
+                      {formatRupiah(formulaResult.sellingPricePerSmallestUnit)}
                     </span>
                     <span className="text-[10px] text-emerald-300">
-                      Laba: +{formatRupiah(isMulti ? formulaResult.profitPerSubUnit : formulaResult.profitPerUnit)}
+                      Laba: +{formatRupiah(formulaResult.profitPerSmallestUnit)}
                     </span>
                   </div>
                 </div>
 
                 <div className="mt-3 pt-2 border-t border-white/10 flex items-center justify-between text-xs text-emerald-100">
-                  <span>Estimasi Laba Kotor ({activeProduct?.defaultUnit || 'Satuan'}):</span>
+                  <span>Estimasi Laba Kotor (per {selectedCalcTier.name}):</span>
                   <span className="font-bold text-white font-mono">
                     +{formatRupiah(formulaResult.profitPerUnit)} ({formulaResult.profitPercentage}%)
                   </span>

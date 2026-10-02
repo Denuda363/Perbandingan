@@ -230,7 +230,7 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                     const diff = quote.price - stats.minPrice;
                     const quoteSelling = calculateSellingPrice(quote.price, settings);
                     const quoteSellingPrice = quote.sellingPrice || quoteSelling.sellingPrice;
-                    const quoteConversions = getProductUnitConversions(product, quote.price, quoteSellingPrice);
+                    const quoteConversions = getProductUnitConversions(product, quote.price, quoteSellingPrice, quote.unit);
 
                     return (
                       <div
@@ -419,7 +419,7 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                       const isMostExpensive = stats.expensiveQuote && stats.expensiveQuote.id === quote.id && stats.quoteCount > 1;
                       const quoteSelling = calculateSellingPrice(quote.price, settings);
                       const quoteSellingPrice = quote.sellingPrice || quoteSelling.sellingPrice;
-                      const quoteConversions = getProductUnitConversions(product, quote.price, quoteSellingPrice);
+                      const quoteConversions = getProductUnitConversions(product, quote.price, quoteSellingPrice, quote.unit);
 
                       return (
                         <td 

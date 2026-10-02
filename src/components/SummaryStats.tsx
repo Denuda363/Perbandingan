@@ -1,5 +1,5 @@
 import React from 'react';
-import { Package, Truck, Tag, TrendingDown, Sparkles } from 'lucide-react';
+import { Package, Truck, Tag, TrendingDown, ArrowUpRight } from 'lucide-react';
 import { Product, Supplier } from '../types';
 import { formatRupiah, getProductPriceStats } from '../utils/formatters';
 
@@ -32,85 +32,95 @@ export const SummaryStats: React.FC<SummaryStatsProps> = ({ products, suppliers 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
       
-      {/* Stat 1: Total Produk */}
+      {/* Metric 1: Total Katalog Produk */}
       <div 
         id="stat-total-products" 
-        className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between"
+        className="bg-white p-4 sm:p-4.5 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col justify-between"
       >
-        <div>
-          <p className="text-xs font-medium text-slate-500">Total Produk</p>
-          <p className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">
+        <div className="flex items-center justify-between text-slate-500">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Total Produk
+          </span>
+          <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center">
+            <Package className="w-4 h-4" />
+          </span>
+        </div>
+        <div className="mt-3">
+          <p className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight font-mono">
             {products.length}
           </p>
-          <span className="text-[11px] text-slate-400 mt-0.5 inline-block">
-            {productsWithSavings} produk memiliki &ge; 2 vendor
-          </span>
-        </div>
-        <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-          <Package className="w-5 h-5" />
+          <p className="text-[11px] text-slate-500 mt-1">
+            <strong className="text-slate-700 font-semibold">{productsWithSavings}</strong> produk &ge; 2 vendor
+          </p>
         </div>
       </div>
 
-      {/* Stat 2: Total Supplier */}
+      {/* Metric 2: Jaringan Supplier PBF */}
       <div 
         id="stat-total-suppliers" 
-        className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between"
+        className="bg-white p-4 sm:p-4.5 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col justify-between"
       >
-        <div>
-          <p className="text-xs font-medium text-slate-500">Supplier Terhubung</p>
-          <p className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">
+        <div className="flex items-center justify-between text-slate-500">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            PBF Terdaftar
+          </span>
+          <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center">
+            <Truck className="w-4 h-4" />
+          </span>
+        </div>
+        <div className="mt-3">
+          <p className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight font-mono">
             {suppliers.length}
           </p>
-          <span className="text-[11px] text-slate-400 mt-0.5 inline-block">
-            {totalQuotes} penawaran harga aktif
-          </span>
-        </div>
-        <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-          <Truck className="w-5 h-5" />
+          <p className="text-[11px] text-slate-500 mt-1">
+            <strong className="text-slate-700 font-semibold">{totalQuotes}</strong> penawaran harga aktif
+          </p>
         </div>
       </div>
 
-      {/* Stat 3: Total Potensi Hemat Satuan */}
+      {/* Metric 3: Akumulasi Selisih Beli */}
       <div 
         id="stat-potential-savings" 
-        className="bg-white p-4 rounded-xl border border-emerald-200 bg-linear-to-br from-white to-emerald-50/40 shadow-xs flex items-center justify-between"
+        className="bg-white p-4 sm:p-4.5 rounded-2xl border border-emerald-200/90 shadow-2xs flex flex-col justify-between bg-emerald-50/20"
       >
-        <div>
-          <div className="flex items-center gap-1">
-            <p className="text-xs font-semibold text-emerald-800">Akumulasi Selisih</p>
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          </div>
-          <p className="text-xl sm:text-2xl font-bold text-emerald-700 mt-0.5">
-            {formatRupiah(totalPotentialUnitSavings)}
-          </p>
-          <span className="text-[11px] text-emerald-600 mt-0.5 inline-block font-medium">
-            Potensi hemat per 1 unit pembelian
+        <div className="flex items-center justify-between text-emerald-800">
+          <span className="text-xs font-semibold uppercase tracking-wider">
+            Akumulasi Selisih
+          </span>
+          <span className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+            <TrendingDown className="w-4 h-4" />
           </span>
         </div>
-        <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-          <TrendingDown className="w-5 h-5 stroke-[2.5]" />
+        <div className="mt-3">
+          <p className="text-xl sm:text-2xl font-bold text-emerald-800 tracking-tight font-mono">
+            {formatRupiah(totalPotentialUnitSavings)}
+          </p>
+          <p className="text-[11px] text-emerald-700 mt-1 font-medium">
+            Potensi hemat per 1 unit belanja
+          </p>
         </div>
       </div>
 
-      {/* Stat 4: Rekor Diskon / Efisiensi */}
+      {/* Metric 4: Rekor Efisiensi Penghematan */}
       <div 
         id="stat-top-saving" 
-        className="bg-white p-4 rounded-xl border border-amber-200 bg-linear-to-br from-white to-amber-50/40 shadow-xs flex items-center justify-between"
+        className="bg-white p-4 sm:p-4.5 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col justify-between"
       >
-        <div>
-          <div className="flex items-center gap-1">
-            <p className="text-xs font-semibold text-amber-800">Hemat Maksimal</p>
-            <Sparkles className="w-3 h-3 text-amber-500" />
-          </div>
-          <p className="text-xl sm:text-2xl font-bold text-amber-900 mt-0.5">
-            Hingga {highestPercentageSaving}%
-          </p>
-          <span className="text-[11px] text-amber-700 mt-0.5 block truncate max-w-[140px] font-medium" title={bestSavingProduct}>
-            {bestSavingProduct || 'Bandingkan vendor'}
+        <div className="flex items-center justify-between text-slate-500">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Hemat Tertinggi
+          </span>
+          <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center">
+            <Tag className="w-4 h-4" />
           </span>
         </div>
-        <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-          <Tag className="w-5 h-5" />
+        <div className="mt-3">
+          <p className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight font-mono">
+            {highestPercentageSaving > 0 ? `-${highestPercentageSaving}%` : '0%'}
+          </p>
+          <p className="text-[11px] text-slate-500 mt-1 truncate max-w-[180px]" title={bestSavingProduct || 'Bandingkan vendor'}>
+            {bestSavingProduct ? `Pada ${bestSavingProduct}` : 'Bandingkan vendor'}
+          </p>
         </div>
       </div>
 

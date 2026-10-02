@@ -66,6 +66,9 @@ export interface MarginFormulaInput {
   roundingOption?: 'none' | 'hundred' | 'thousand';
   subUnitCount?: number; // Jumlah pecahan per box (contoh: 10 lembar/strip)
   subUnitName?: string; // Nama satuan pecahan (contoh: 'lembar')
+  inputUnitRatio?: number; // Rasio satuan yang diinput terhadap satuan terkecil (default 1 jika satuan terkecil)
+  inputUnitName?: string; // Nama satuan yang sedang diinput
+  isSmallestUnit?: boolean; // True jika nilai modal yang diinput adalah per satuan terkecil
 }
 
 export interface MarginFormulaResult {
@@ -100,10 +103,16 @@ export interface MarginFormulaResult {
   // Hasil Akhir: (Modal - diskon 1 - diskon 2 + ppn) + margin
   rawSellingPrice: number;
   sellingPrice: number; // Harga jual setelah pembulatan kasir
-  profitPerUnit: number; // Laba kotor per Box
+  profitPerUnit: number; // Laba kotor per satuan input
   profitPercentage: number; // Persentase laba terhadap modal yang dibayar
   
-  // Satuan pecahan kecil (lembar / strip)
+  // Satuan terkecil (Level 1)
+  costPerSmallestUnit: number;
+  costWithPpnPerSmallestUnit: number;
+  sellingPricePerSmallestUnit: number;
+  profitPerSmallestUnit: number;
+
+  // Satuan pecahan kecil (lembar / strip) - backward compatibility
   subUnitCount: number;
   subUnitName: string;
   costPerSubUnit: number; // Modal per lembar setelah diskon
@@ -125,6 +134,8 @@ export function calculateMarginFormula(params: MarginFormulaInput): MarginFormul
   const modal = Math.max(0, params.modal || 0);
   const subCount = params.subUnitCount && params.subUnitCount > 0 ? params.subUnitCount : 10;
   const subName = params.subUnitName || 'lembar';
+  const inputRatio = Math.max(1, params.inputUnitRatio || 1);
+  const isInputSmallest = params.isSmallestUnit ?? (inputRatio === 1);
 
   // 1. Diskon 1 (bisa % atau Rp)
   const d1Type = params.discount1Type || 'percent';
@@ -183,9 +194,18 @@ export function calculateMarginFormula(params: MarginFormulaInput): MarginFormul
   const profitPerUnit = finalSellingPrice - costWithPpn;
   const profitPercentage = costWithPpn > 0 ? parseFloat(((profitPerUnit / costWithPpn) * 100).toFixed(1)) : 0;
 
-  const costPerSubUnit = Math.round(netCostAfterDiscounts / subCount);
-  const costWithPpnPerSubUnit = Math.round(costWithPpn / subCount);
-  const sellingPricePerSubUnit = Math.round(finalSellingPrice / subCount);
+  // Perhitungan Akurat Satuan Terkecil:
+  // Jika input adalah satuan terkecil (inputRatio === 1), maka netCostAfterDiscounts SUDAH nilai satuan terkecil.
+  // Jika input adalah satuan lebih besar (inputRatio > 1), maka dibagi dengan inputRatio.
+  const costPerSmallestUnit = Math.round(netCostAfterDiscounts / inputRatio);
+  const costWithPpnPerSmallestUnit = Math.round(costWithPpn / inputRatio);
+  const sellingPricePerSmallestUnit = Math.round(finalSellingPrice / inputRatio);
+  const profitPerSmallestUnit = sellingPricePerSmallestUnit - costWithPpnPerSmallestUnit;
+
+  // Nilai per sub-unit (lembar/strip):
+  const costPerSubUnit = isInputSmallest ? netCostAfterDiscounts : Math.round(netCostAfterDiscounts / subCount);
+  const costWithPpnPerSubUnit = isInputSmallest ? costWithPpn : Math.round(costWithPpn / subCount);
+  const sellingPricePerSubUnit = isInputSmallest ? finalSellingPrice : Math.round(finalSellingPrice / subCount);
   const profitPerSubUnit = sellingPricePerSubUnit - costWithPpnPerSubUnit;
 
   const d1Formatted = d1Type === 'percent' ? `${d1Val}% (-${formatRupiah(d1Amount)})` : `-${formatRupiah(d1Amount)}`;
@@ -216,6 +236,10 @@ export function calculateMarginFormula(params: MarginFormulaInput): MarginFormul
     sellingPrice: finalSellingPrice,
     profitPerUnit,
     profitPercentage,
+    costPerSmallestUnit,
+    costWithPpnPerSmallestUnit,
+    sellingPricePerSmallestUnit,
+    profitPerSmallestUnit,
     subUnitCount: subCount,
     subUnitName: subName,
     costPerSubUnit,
@@ -372,6 +396,8 @@ export function calculatePharmaPricing({
   subUnitCount = 10,
   subUnitName = 'lembar',
   ppnRate = 0.11,
+  unitRatio = 1,
+  isSmallestUnit = false,
 }: {
   hna?: number;
   discountPercent?: number;
@@ -385,8 +411,11 @@ export function calculatePharmaPricing({
   subUnitCount?: number;
   subUnitName?: string;
   ppnRate?: number;
+  unitRatio?: number;
+  isSmallestUnit?: boolean;
 }): PharmacyPricingCalculation {
   const safeCount = subUnitCount && subUnitCount > 0 ? subUnitCount : 10;
+  const isSmallest = isSmallestUnit || unitRatio === 1;
   let finalHna = hna;
   
   // Support either discount1Value or legacy discountPercent
@@ -417,15 +446,17 @@ export function calculatePharmaPricing({
     marginType: marginType,
     subUnitCount: safeCount,
     subUnitName: subUnitName || 'lembar',
+    inputUnitRatio: unitRatio,
+    isSmallestUnit: isSmallest,
   });
 
   if (finalBox === 0) {
     finalBox = formula.netCostAfterDiscounts;
   }
 
-  const hargaLembar = Math.round(finalBox / safeCount);
+  const hargaLembar = isSmallest ? finalBox : Math.round(finalBox / safeCount);
   const hargaPlusPpn = Math.round(finalBox * (1 + ppnRate));
-  const hargaLembarPlusPpn = Math.round(hargaLembar * (1 + ppnRate));
+  const hargaLembarPlusPpn = isSmallest ? hargaPlusPpn : Math.round(hargaLembar * (1 + ppnRate));
 
   return {
     hna: finalHna,
@@ -703,14 +734,16 @@ export function normalizeProductUnits(product: Partial<Product> | null | undefin
 /**
  * Menghitung rincian konversi harga (modal beli, estimasi harga jual, dan laba)
  * untuk setiap satuan produk berdasarkan acuan:
- * - Satuan terkecil adalah satuan utama (Index 0)
- * - Satuan kedua dan berikutnya harga dikonversi dari satuan terkecil
- * - Contoh: Satuan kecil Lembar = Rp 1.000, 1 Box = 10 Lembar => 1 Box = Rp 10.000
+ * - Satuan terkecil adalah satuan utama (Index 0, rasio = 1)
+ * - Satuan kedua dan berikutnya harga dikonversi proporsional dari satuan terkecil (rasio total)
+ * - Contoh: Satuan kecil Tablet = Rp 200, 1 Strip (10 Tablet) = Rp 2.000, 1 Box (10 Strip = 100 Tablet) = Rp 20.000
+ * - Jika user memasukkan harga per satuan terkecil (Tablet = Rp 200), hasilnya tetap Rp 200 untuk Tablet dan Rp 20.000 untuk Box (TIDAK terbalik).
  */
 export function getProductUnitConversions(
   product: Partial<Product> | null | undefined,
   baseCostPrice: number,
-  baseSellingPrice?: number
+  baseSellingPrice?: number,
+  sourceUnitName?: string
 ): ProductUnitConversion[] {
   const units = normalizeProductUnits(product);
   const cost = Math.max(0, baseCostPrice || 0);
@@ -733,74 +766,75 @@ export function getProductUnitConversions(
     }];
   }
 
-  // Multi-Satuan:
-  // Satuan terkecil adalah satuan utama (Index 0).
-  // Hitung modal dasar per Satuan Terkecil.
-  const secondTierRatio = Math.max(1, units[1]?.totalRatio || units[1]?.content || 10);
-  
-  // Tentukan harga per satuan terkecil:
-  // Acuan: Satuan terkecil adalah satuan utama.
-  // Misal: Lembar = Rp 1.000, 1 Box = 10 Lembar => 1 Box = Rp 10.000
-  let smallestCost = 0;
-  if (cost > 0) {
-    // 1. Cek apakah ada penawaran quote yang tepat sesuai nilai cost
-    const matchedQuote = product?.quotes?.find(q => q.price === cost || q.pricePerSubUnit === cost);
-    if (matchedQuote) {
-      if (matchedQuote.pricePerSubUnit && matchedQuote.pricePerSubUnit > 0) {
-        smallestCost = matchedQuote.pricePerSubUnit;
-      } else if (matchedQuote.unit && matchedQuote.unit.toLowerCase() === units[0].name.toLowerCase()) {
-        smallestCost = matchedQuote.price;
-      } else {
-        smallestCost = Math.round(matchedQuote.price / secondTierRatio);
+  // Cari satuan asal (sourceTier) yang menjadi acuan nilai baseCostPrice & baseSellingPrice
+  let sourceTier = units[0]; // Default: satuan terkecil (Level 1, rasio 1)
+
+  if (sourceUnitName && sourceUnitName.trim()) {
+    const sNameLower = sourceUnitName.trim().toLowerCase();
+    const matched = units.find(u => u.name.toLowerCase() === sNameLower);
+    if (matched) {
+      sourceTier = matched;
+    }
+  } else if (cost > 0) {
+    // 1. Cek apakah ada quote penawaran yang cocok
+    const quotePerSub = product?.quotes?.find(q => q.pricePerSubUnit === cost);
+    const quoteExact = product?.quotes?.find(q => q.price === cost);
+
+    if (quotePerSub) {
+      // Nilai cost adalah harga per satuan terkecil (Level 1)
+      sourceTier = units[0];
+    } else if (quoteExact) {
+      if (quoteExact.unit) {
+        const qUnitLower = quoteExact.unit.toLowerCase();
+        const matched = units.find(u => u.name.toLowerCase() === qUnitLower);
+        if (matched) sourceTier = matched;
+      } else if (quoteExact.pricePerSubUnit && quoteExact.pricePerSubUnit > 0) {
+        // Jika ada quoteExact tapi tidak ada unit, hitung rasio dari price/pricePerSubUnit
+        const impliedRatio = Math.round(quoteExact.price / quoteExact.pricePerSubUnit);
+        const matchedByRatio = units.find(u => u.totalRatio === impliedRatio);
+        if (matchedByRatio) sourceTier = matchedByRatio;
       }
     } else {
-      // 2. Evaluasi berdasarkan defaultUnit produk atau threshold
-      const defaultUnitLower = (product?.defaultUnit || '').toLowerCase();
-      const smallestUnitLower = units[0].name.toLowerCase();
-      const secondUnitLower = (units[1]?.name || '').toLowerCase();
-
-      if (defaultUnitLower && defaultUnitLower === smallestUnitLower) {
-        smallestCost = cost;
-      } else if (defaultUnitLower && defaultUnitLower === secondUnitLower) {
-        smallestCost = Math.round(cost / secondTierRatio);
-      } else if (cost < 5000 && secondTierRatio >= 5) {
-        // Angka eceran satuan terkecil (misal Lembar = 1000)
-        smallestCost = cost;
+      // 2. Evaluasi berdasarkan defaultUnit produk
+      const defUnitLower = (product?.defaultUnit || '').toLowerCase();
+      const matchedDef = units.find(u => u.name.toLowerCase() === defUnitLower);
+      if (matchedDef) {
+        sourceTier = matchedDef;
       } else {
-        smallestCost = Math.round(cost / secondTierRatio);
+        // Default ke satuan terkecil (Level 1)
+        sourceTier = units[0];
       }
     }
   }
 
-  let smallestSelling = 0;
-  if (selling > 0) {
-    if (cost > 0 && smallestCost > 0) {
-      // Jika cost adalah harga kemasan (box), maka selling juga harga kemasan
-      if (cost >= smallestCost * (secondTierRatio - 0.5)) {
-        smallestSelling = Math.round(selling / secondTierRatio);
-      } else {
-        smallestSelling = selling;
-      }
-    } else {
-      smallestSelling = Math.round(selling / secondTierRatio);
-    }
-  }
+  const sourceRatio = Math.max(1, sourceTier?.totalRatio || 1);
+
+  // Nilai dasar per Satuan Terkecil (Level 1):
+  // Jika input adalah satuan terkecil (sourceRatio === 1), maka smallestCost = cost (TIDAK DIBAGI).
+  // Jika input adalah satuan kemasan besar (sourceRatio > 1), maka dibagi dengan rasio kemasan tersebut.
+  const smallestCost = cost / sourceRatio;
+  const smallestSelling = selling > 0 ? selling / sourceRatio : 0;
 
   return units.map((tier, idx) => {
     const isSmallest = idx === 0;
     const isBase = isSmallest;
     const ratio = Math.max(1, tier.totalRatio || 1);
 
-    // Satuan kedua dan berikutnya dikonversi dari satuan terkecil:
-    // Lembar = smallestCost
-    // 1 Box = 10 Lembar => 10 * smallestCost
+    // Satuan kedua dan berikutnya dikonversi proporsional dari satuan terkecil:
+    // Satuan terkecil = smallestCost
+    // Kemasan = smallestCost * ratio
     const unitCost = Math.round(smallestCost * ratio);
     const unitSelling = smallestSelling > 0 ? Math.round(smallestSelling * ratio) : 0;
     const profit = unitSelling > 0 ? unitSelling - unitCost : 0;
 
-    let description = 'Satuan Utama (Terkecil)';
+    let description = 'Satuan Utama / Terkecil (Eceran)';
     if (!isSmallest) {
-      description = `1 ${tier.name} = ${tier.content} ${units[0].name} (Dikonversi dari ${units[0].name})`;
+      const prevTier = units[idx - 1];
+      if (idx === 1) {
+        description = `1 ${tier.name} = ${tier.content} ${units[0].name} (Total: ${ratio.toLocaleString('id-ID')} ${units[0].name})`;
+      } else {
+        description = `1 ${tier.name} = ${tier.content} ${prevTier?.name || units[0].name} (Total: ${ratio.toLocaleString('id-ID')} ${units[0].name})`;
+      }
     }
 
     return {
@@ -819,6 +853,43 @@ export function getProductUnitConversions(
 }
 
 /**
+ * Konversi jumlah dari satu satuan ke satuan lain pada hierarki multi-satuan produk.
+ * Misal: 2 Karton = 40 Box = 400 Strip = 4.000 Tablet
+ */
+export function convertProductQuantity(
+  product: Partial<Product> | null | undefined,
+  fromUnitName: string,
+  fromQuantity: number
+): { unitName: string; quantity: number; level: number; totalRatio: number; costPrice?: number; sellingPrice?: number }[] {
+  const units = normalizeProductUnits(product);
+  const qty = Math.max(0, fromQuantity || 0);
+
+  if (units.length <= 1) {
+    const singleName = units[0]?.name || product?.defaultUnit || 'Satuan';
+    return [{
+      unitName: singleName,
+      quantity: qty,
+      level: 1,
+      totalRatio: 1,
+    }];
+  }
+
+  // Cari unit asal
+  const sourceTier = units.find(u => u.name.toLowerCase() === fromUnitName.toLowerCase()) || units[0];
+  const totalBaseQty = qty * (sourceTier.totalRatio || 1);
+
+  return units.map(u => {
+    const tierQty = totalBaseQty / (u.totalRatio || 1);
+    return {
+      unitName: u.name,
+      quantity: Number.isInteger(tierQty) ? tierQty : parseFloat(tierQty.toFixed(2)),
+      level: u.level,
+      totalRatio: u.totalRatio,
+    };
+  });
+}
+
+/**
  * Memeriksa apakah produk merupakan produk multi-satuan (> 1 satuan)
  * atau hanya memiliki 1 satuan tunggal.
  */
@@ -831,26 +902,32 @@ export function isProductMultiUnit(product: Partial<Product> | null | undefined)
 
 /**
  * Format teks ringkas hierarki satuan produk untuk ditampilkan di kartu atau label.
+ * Mendukung satuan tunggal maupun multi-satuan bertingkat (2, 3, 4, 5+ satuan).
  * Contoh:
- * - 1 Satuan: "1 Satuan: Botol"
- * - 2 Satuan: "1 Box = 10 Lembar (Satuan Utama: Lembar)"
- * - 3 Satuan: "1 Box = 10 Strip @ 10 Tablet (Satuan Utama: Tablet)"
+ * - 1 Satuan: "Satuan Tunggal: Botol"
+ * - 2 Satuan: "1 Box = 10 Strip (Satuan Pokok: Strip)"
+ * - 3 Satuan: "1 Box = 10 Strip @ 10 Tablet (Total: 100 Tablet)"
+ * - 4+ Satuan: "1 Karton = 20 Box @ 10 Strip @ 10 Tablet (Total: 2.000 Tablet)"
  */
 export function formatProductUnitSummary(product: Partial<Product> | null | undefined): string {
   const units = normalizeProductUnits(product);
   if (units.length <= 1) {
-    return `1 Satuan: ${units[0]?.name || 'Pcs'}`;
+    return `Satuan Tunggal: ${units[0]?.name || product?.defaultUnit || 'Botol'}`;
   }
 
   if (units.length === 2) {
-    return `1 ${units[1].name} = ${units[1].content} ${units[0].name} (Satuan Utama: ${units[0].name})`;
+    return `1 ${units[1].name} = ${units[1].content} ${units[0].name} (Satuan Pokok: ${units[0].name})`;
   }
 
   if (units.length === 3) {
-    return `1 ${units[2].name} = ${units[2].content} ${units[1].name} @ ${units[1].content} ${units[0].name} (Satuan Utama: ${units[0].name})`;
+    return `1 ${units[2].name} = ${units[2].content} ${units[1].name} @ ${units[1].content} ${units[0].name} (Total: ${units[2].totalRatio} ${units[0].name})`;
   }
 
-  // 4 atau lebih tingkatan satuan
+  // 4 atau lebih tingkatan satuan (misal: Karton -> Box -> Strip -> Tablet)
   const last = units[units.length - 1];
-  return `1 ${last.name} = ${last.totalRatio} ${units[0].name} (Satuan Utama: ${units[0].name})`;
+  const chain = [];
+  for (let i = units.length - 1; i >= 1; i--) {
+    chain.push(`${units[i].content} ${units[i - 1].name}`);
+  }
+  return `1 ${last.name} = ${chain.join(' @ ')} (Total: ${last.totalRatio.toLocaleString('id-ID')} ${units[0].name})`;
 }

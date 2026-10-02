@@ -31,6 +31,7 @@ import { SimulationCalculator } from './components/SimulationCalculator';
 import { SupplierDirectory } from './components/SupplierDirectory';
 import { ExcelCompareView } from './components/ExcelCompareView';
 import { ProductModal } from './components/ProductModal';
+import { ProductDetailModal } from './components/ProductDetailModal';
 import { AddQuoteModal } from './components/AddQuoteModal';
 import { SupplierModal } from './components/SupplierModal';
 import { ExcelImportModal } from './components/ExcelImportModal';
@@ -105,6 +106,9 @@ export default function App() {
   // Modals state
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
+
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedDetailProduct, setSelectedDetailProduct] = useState<Product | null>(null);
 
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [quoteSelectedProduct, setQuoteSelectedProduct] = useState<Product | null>(null);
@@ -836,31 +840,40 @@ export default function App() {
           <div className="space-y-4">
             
             {/* Filter and Sorting Toolbar */}
-            <div className="bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3">
               
-              {/* Category Chips with Edge-to-Edge Mobile Scroll */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none -mx-3 px-3 sm:mx-0 sm:px-0">
-                <span className="text-xs font-semibold text-slate-500 mr-1 flex items-center gap-1 shrink-0">
-                  <Filter className="w-3.5 h-3.5" />
-                  Kategori:
-                </span>
-                {categories.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`text-xs px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-all cursor-pointer ${
-                      selectedCategory === cat
-                        ? 'bg-emerald-600 text-white shadow-xs font-bold'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                {/* Category Selector with Clean Horizontal Scroll */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none -mx-3.5 px-3.5 sm:mx-0 sm:px-0">
+                  <span className="text-xs font-semibold text-slate-400 mr-1 flex items-center gap-1 shrink-0 uppercase tracking-wider text-[10px]">
+                    Kategori:
+                  </span>
+                  {categories.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-all cursor-pointer ${
+                        selectedCategory === cat
+                          ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Counter & Quick Indicator */}
+                <div className="text-xs text-slate-500 font-medium shrink-0 flex items-center gap-2">
+                  <span>
+                    Menampilkan <strong className="text-slate-900 font-semibold">{sortedProducts.length}</strong> dari {products.length} obat
+                  </span>
+                </div>
               </div>
 
               {/* Extra Filters, Layout Switcher & Sort */}
-              <div className="flex items-center justify-between md:justify-end gap-2.5 w-full md:w-auto flex-wrap pt-1 md:pt-0 border-t md:border-t-0 border-slate-100">
+              <div className="flex items-center justify-between md:justify-end gap-2.5 w-full flex-wrap pt-2.5 border-t border-slate-100">
                 {/* Desktop View Layout Switcher */}
                 <div className="hidden sm:inline-flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
                   <button
@@ -904,14 +917,14 @@ export default function App() {
                   </button>
                 </div>
 
-                <label className="flex items-center gap-1.5 text-xs text-slate-700 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200 cursor-pointer">
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors">
                   <input
                     type="checkbox"
                     checked={filterMultipleVendorsOnly}
                     onChange={(e) => setFilterMultipleVendorsOnly(e.target.checked)}
                     className="rounded text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5"
                   />
-                  <span className="font-medium">&ge; 2 Supplier</span>
+                  <span className="font-medium">&ge; 2 Supplier (Bisa Komparasi)</span>
                 </label>
 
                 <div className="flex items-center gap-1.5 text-xs">
@@ -934,7 +947,7 @@ export default function App() {
 
             {/* Products Grid or Table List */}
             {sortedProducts.length === 0 ? (
-              <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-xs">
+              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
                 <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
                   <PackageSearch className="w-6 h-6" />
                 </div>
@@ -961,6 +974,10 @@ export default function App() {
                   <ProductTableView
                     products={paginatedProducts}
                     settings={settings}
+                    onViewDetail={(p) => {
+                      setSelectedDetailProduct(p);
+                      setIsDetailModalOpen(true);
+                    }}
                     onAddQuote={(p) => {
                       setQuoteSelectedProduct(p);
                       setQuoteToEdit(null);
@@ -992,6 +1009,10 @@ export default function App() {
                         key={product.id}
                         product={product}
                         settings={settings}
+                        onViewDetail={(p) => {
+                          setSelectedDetailProduct(p);
+                          setIsDetailModalOpen(true);
+                        }}
                         onAddQuote={(p) => {
                           setQuoteSelectedProduct(p);
                           setQuoteToEdit(null);
@@ -1185,6 +1206,35 @@ export default function App() {
         onSave={handleSaveProduct}
         productToEdit={productToEdit}
         suppliers={suppliers}
+      />
+
+      <ProductDetailModal
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+        product={selectedDetailProduct}
+        settings={settings}
+        onAddQuote={(p) => {
+          setIsDetailModalOpen(false);
+          setQuoteSelectedProduct(p);
+          setQuoteToEdit(null);
+          setIsQuoteModalOpen(true);
+        }}
+        onEditQuote={(p, q) => {
+          setIsDetailModalOpen(false);
+          setQuoteSelectedProduct(p);
+          setQuoteToEdit(q);
+          setIsQuoteModalOpen(true);
+        }}
+        onDeleteQuote={handleDeleteQuote}
+        onEditProduct={(p) => {
+          setIsDetailModalOpen(false);
+          setProductToEdit(p);
+          setIsProductModalOpen(true);
+        }}
+        onSimulateOrder={(productId) => {
+          setIsDetailModalOpen(false);
+          setCurrentView('simulation');
+        }}
       />
 
       <AddQuoteModal

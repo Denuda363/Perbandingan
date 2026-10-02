@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { 
   Award, 
   TrendingDown, 
+  TrendingUp,
   Plus, 
   MoreVertical, 
   Edit, 
@@ -15,8 +16,11 @@ import {
   Building2,
   Layers,
   PackageCheck,
-  TrendingUp,
-  Tag
+  Tag,
+  Eye,
+  Calculator,
+  Percent,
+  Package
 } from 'lucide-react';
 import { Product, SupplierQuote, AppSettings, DEFAULT_APP_SETTINGS } from '../types';
 import { 
@@ -38,6 +42,7 @@ interface ProductCardProps {
   onEditProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
   onSimulateOrder: (productId: string) => void;
+  onViewDetail?: (product: Product) => void;
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
@@ -49,9 +54,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onEditProduct,
   onDeleteProduct,
   onSimulateOrder,
+  onViewDetail,
 }) => {
   const [showAllQuotes, setShowAllQuotes] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
+  const [cardTab, setCardTab] = useState<'quotes' | 'conversions' | 'calculator'>('quotes');
+  const [inlineQty, setInlineQty] = useState<number>(5);
+  const [calculatorUnit, setCalculatorUnit] = useState<string>('');
 
   const stats = getProductPriceStats(product);
   const quotesSorted = [...product.quotes].sort((a, b) => a.price - b.price);
@@ -62,79 +71,90 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
   const productUnits = normalizeProductUnits(product);
   const isMulti = isProductMultiUnit(product);
-  const subCount = isMulti && productUnits.length > 1 ? productUnits[1].totalRatio : 1;
-  const subName = isMulti && productUnits.length > 1 ? productUnits[1].name : (productUnits[0]?.name || 'Satuan');
 
   const cheapestSelling = stats.cheapestQuote 
     ? calculateSellingPrice(stats.cheapestQuote.price, settings)
     : null;
 
   const bestConversions = stats.cheapestQuote && cheapestSelling
-    ? getProductUnitConversions(product, stats.cheapestQuote.price, cheapestSelling.sellingPrice)
-    : [];
+    ? getProductUnitConversions(product, stats.cheapestQuote.price, stats.cheapestQuote.sellingPrice || cheapestSelling.sellingPrice, stats.cheapestQuote.unit)
+    : getProductUnitConversions(product, 0, 0);
+
+  const activeCalcUnit = calculatorUnit || (productUnits[0]?.name || product.defaultUnit);
+  const calcTier = productUnits.find(u => u.name.toLowerCase() === activeCalcUnit.toLowerCase()) || productUnits[0];
+  const calcRatio = calcTier?.totalRatio || 1;
 
   return (
     <div 
       id={`product-card-${product.id}`}
-      className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-all duration-200 shadow-xs hover:shadow-md flex flex-col justify-between overflow-hidden"
+      className="bg-white rounded-2xl border border-slate-200/90 hover:border-slate-300 transition-all duration-200 shadow-xs hover:shadow-sm flex flex-col justify-between overflow-hidden"
     >
       {/* Card Header */}
       <div className="p-4 sm:p-5 border-b border-slate-100">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex-1">
-            <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-              <span className="text-[11px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
-                {product.category || 'Umum'}
-              </span>
+          <div className="flex-1 min-w-0">
+            {/* Zero-Pill Unboxed Metadata Line */}
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium mb-1.5 flex-wrap">
+              <span className="text-slate-700 font-semibold">{product.category || 'Umum'}</span>
+              <span aria-hidden="true" className="text-slate-300">·</span>
               {product.sku && (
-                <span className="text-[11px] font-mono text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
-                  {product.sku}
-                </span>
+                <>
+                  <span className="font-mono text-slate-500">{product.sku}</span>
+                  <span aria-hidden="true" className="text-slate-300">·</span>
+                </>
+              )}
+              {product.company ? (
+                <span className="text-slate-600 truncate max-w-[160px] sm:max-w-xs">{product.company}</span>
+              ) : (
+                <span className="text-slate-400">Tanpa Pabrik</span>
               )}
             </div>
 
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
+            {/* Product Title */}
+            <h3 
+              onClick={() => onViewDetail && onViewDetail(product)}
+              className="text-base sm:text-lg font-bold text-slate-900 leading-snug hover:text-emerald-700 transition-colors cursor-pointer"
+              title="Klik untuk melihat rincian lengkap"
+            >
               {product.name}
             </h3>
 
-            {/* Company / Pabrik Produk */}
-            {product.company && (
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mt-1">
-                <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="truncate">{product.company}</span>
-              </div>
-            )}
-
-            {/* Kemasan & Isi Kemasan Badges */}
-            <div className="flex flex-wrap items-center gap-2 mt-2">
-              {product.packaging && (
-                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-800 text-[11px] font-medium border border-blue-200/70">
-                  <Layers className="w-3 h-3 text-blue-600 shrink-0" />
-                  <span>Kemasan: <strong>{product.packaging}</strong></span>
-                </div>
-              )}
-
-              {isMulti ? (
-                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 text-[11px] font-medium border border-emerald-200/70">
-                  <PackageCheck className="w-3 h-3 text-emerald-600 shrink-0" />
-                  <span>Isi: <strong>{product.packContent || formatProductUnitSummary(product)}</strong></span>
-                </div>
-              ) : (
-                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-800 text-[11px] font-medium border border-blue-200/70">
-                  <PackageCheck className="w-3 h-3 text-blue-600 shrink-0" />
-                  <span>Satuan: <strong>{product.defaultUnit} (1 Satuan Tunggal)</strong></span>
-                </div>
-              )}
-            </div>
-
+            {/* Active Substance / Generic */}
             {product.genericName && (
-              <p className="text-[11px] text-slate-500 mt-1.5 italic">
-                Zat Aktif: {product.genericName}
+              <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                Zat Aktif: <span className="font-medium text-slate-700">{product.genericName}</span>
               </p>
             )}
+
+            {/* Packaging & Unit Hierarchy */}
+            <div className="flex items-center gap-2 text-xs mt-2 flex-wrap">
+              {product.packaging && (
+                <span className="flex items-center gap-1 text-slate-600">
+                  <Layers className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>Kemasan: <strong>{product.packaging}</strong></span>
+                </span>
+              )}
+              {isMulti ? (
+                <>
+                  <span aria-hidden="true" className="text-slate-300">·</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    <PackageCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Multi-Satuan ({productUnits.length} Tingkat: {productUnits.map(u => u.name).join(' → ')})</span>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span aria-hidden="true" className="text-slate-300">·</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    <Package className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Satuan Tunggal ({product.defaultUnit})</span>
+                  </span>
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Action Menu (Desktop / Touch) */}
+          {/* Action Kebab Menu */}
           <div className="relative shrink-0">
             <button
               id={`btn-menu-${product.id}`}
@@ -148,29 +168,41 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             {showActionMenu && (
               <>
                 <div 
-                  className="fixed inset-0 z-10" 
+                  className="fixed inset-0 z-20" 
                   onClick={() => setShowActionMenu(false)} 
                 />
-                <div className="absolute right-0 mt-1 w-44 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-20 text-xs">
+                <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs text-slate-700 animate-in fade-in zoom-in-95 duration-100">
+                  {onViewDetail && (
+                    <button
+                      onClick={() => {
+                        setShowActionMenu(false);
+                        onViewDetail(product);
+                      }}
+                      className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-800 font-medium"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Rincian Lengkap Obat</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setShowActionMenu(false);
                       onEditProduct(product);
                     }}
-                    className="w-full text-left px-3 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-800 font-medium"
                   >
                     <Edit className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Edit Data Produk</span>
+                    <span>Edit Data Obat</span>
                   </button>
                   <button
                     onClick={() => {
                       setShowActionMenu(false);
                       onAddQuote(product);
                     }}
-                    className="w-full text-left px-3 py-2 text-emerald-700 hover:bg-emerald-50 flex items-center gap-2"
+                    className="w-full text-left px-3.5 py-2 text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 font-medium"
                   >
                     <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Tambah Penawaran</span>
+                    <span>Tambah Penawaran PBF</span>
                   </button>
                   <div className="border-t border-slate-100 my-1" />
                   <button
@@ -178,7 +210,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                       setShowActionMenu(false);
                       onDeleteProduct(product.id);
                     }}
-                    className="w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2"
+                    className="w-full text-left px-3.5 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-medium"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Hapus Produk</span>
@@ -189,73 +221,63 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </div>
         </div>
 
-        {/* Highlight Best Deal Section */}
+        {/* Hero Best Deal / Recommendation Box */}
         {stats.cheapestQuote && cheapestSelling ? (
-          <div className="mt-3.5 p-3.5 rounded-xl bg-gradient-to-br from-emerald-50/95 via-teal-50/80 to-emerald-50/60 border border-emerald-200 shadow-xs">
+          <div className="mt-4 p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/90 shadow-2xs space-y-3">
             
-            {/* Header: Termurah & Hemat */}
-            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-emerald-200/70 flex-wrap">
-              <div className="flex items-center gap-1.5">
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                  <Award className="w-3.5 h-3.5 text-emerald-700" />
-                  Supplier Termurah
+            {/* Top Line: Supplier Termurah & Hemat Tag */}
+            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-200/70 flex-wrap">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                  <Award className="w-3 h-3 text-emerald-700" />
+                  PBF Termurah
                 </span>
-                <span className="text-xs sm:text-sm font-bold text-slate-900">
+                <span className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                   {stats.cheapestQuote.supplierName}
                 </span>
               </div>
 
               {stats.difference > 0 && (
-                <div className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300/80 px-2 py-0.5 rounded-full">
-                  <TrendingDown className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5]" />
-                  <span>Hemat {stats.savingsPercentage}% ({formatRupiah(stats.difference)})</span>
-                </div>
+                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md inline-flex items-center gap-1 shrink-0">
+                  <TrendingDown className="w-3 h-3 text-emerald-600" />
+                  <span>Hemat {formatRupiah(stats.difference)} (-{stats.savingsPercentage}%)</span>
+                </span>
               )}
             </div>
 
-            {/* 2-Column Responsive Layout for Modal Beli & Harga Jual */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+            {/* Split Metrics: Modal Beli vs Harga Jual */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               
-              {/* Box 1: Modal Beli */}
-              <div className="bg-white/90 p-2.5 rounded-lg border border-emerald-100 flex flex-col justify-between">
+              {/* Modal Beli */}
+              <div className="bg-white p-2.5 rounded-lg border border-slate-200/80 flex flex-col justify-between">
                 <div>
                   <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">
-                    Modal Beli Terbaik:
+                    Modal Beli Terbaik (Netto)
                   </span>
                   
                   {bestConversions.length <= 1 ? (
-                    // 1 Satuan: Tampilkan HANYA 1 harga modal sesuai satuannya
-                    <div className="flex items-baseline gap-1 mt-1">
-                      <span className="text-lg sm:text-xl font-bold text-slate-900 font-mono">
+                    <div className="mt-1 flex items-baseline gap-1">
+                      <span className="text-lg font-bold text-slate-900 font-mono">
                         {formatRupiah(bestConversions[0]?.costPrice || stats.cheapestQuote.price)}
                       </span>
-                      <span className="text-xs text-slate-600 font-semibold font-sans">
+                      <span className="text-xs text-slate-500 font-sans">
                         / {bestConversions[0]?.name || stats.cheapestQuote.unit || product.defaultUnit}
                       </span>
                     </div>
                   ) : (
-                    // 2 Satuan / Multi-Satuan: Menampilkan harga Satuan Utama & Satuan Turunan
-                    <div className="mt-1 space-y-1">
-                      <div className="flex items-baseline gap-1" title="Satuan Utama (Terkecil)">
-                        <span className="text-lg sm:text-xl font-bold text-slate-900 font-mono">
+                    <div className="mt-1 space-y-0.5">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-base sm:text-lg font-bold text-slate-900 font-mono">
                           {formatRupiah(bestConversions[0].costPrice)}
                         </span>
-                        <span className="text-xs text-slate-600 font-semibold font-sans">
+                        <span className="text-xs text-slate-500 font-sans">
                           / {bestConversions[0].name}
                         </span>
-                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
-                          Utama
-                        </span>
                       </div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                      <div className="flex items-center gap-1.5 flex-wrap text-slate-600">
                         {bestConversions.slice(1).map((tier, tIdx) => (
-                          <span
-                            key={tIdx}
-                            title={`Satuan Tingkat ${tier.level} (1 ${tier.name} = ${tier.content} ${bestConversions[0].name})`}
-                            className="text-xs font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 font-mono inline-flex items-center gap-1"
-                          >
-                            <span>{formatRupiah(tier.costPrice)}</span>
-                            <span className="text-[10px] font-semibold text-slate-600 font-sans">/ {tier.name}</span>
+                          <span key={tIdx} className="text-xs font-mono font-medium text-slate-700">
+                            ~{formatRupiah(tier.costPrice)} <span className="text-[10px] text-slate-500 font-sans">/{tier.name}</span>
                           </span>
                         ))}
                       </div>
@@ -269,46 +291,40 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 </div>
               </div>
 
-              {/* Box 2: Rekomendasi Harga Jual */}
-              <div className="bg-white/90 p-2.5 rounded-lg border border-emerald-100 flex flex-col justify-between">
+              {/* Harga Jual Apotek */}
+              <div className="bg-white p-2.5 rounded-lg border border-slate-200/80 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between gap-1">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-900 flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3 text-emerald-700" />
-                      Harga Jual (+{settings.marginPercent}%):
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-800 flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3 text-emerald-600" />
+                      Rekomendasi Jual (+{settings.marginPercent}%)
                     </span>
                   </div>
 
                   <div className="mt-1">
                     {bestConversions.length <= 1 ? (
-                      // 1 Satuan: Tampilkan HANYA 1 harga jual sesuai satuannya
                       <div className="flex items-baseline gap-1">
-                        <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono">
+                        <span className="text-lg font-bold text-emerald-700 font-mono">
                           {formatRupiah(cheapestSelling.sellingPrice)}
                         </span>
-                        <span className="text-xs text-slate-600 font-semibold font-sans">
+                        <span className="text-xs text-slate-500 font-sans">
                           / {bestConversions[0]?.name || stats.cheapestQuote.unit || product.defaultUnit}
                         </span>
                       </div>
                     ) : (
-                      // 2 Satuan / Multi-Satuan: Menampilkan harga jual mengikuti satuan
-                      <div className="space-y-1">
+                      <div className="space-y-0.5">
                         <div className="flex items-baseline gap-1">
-                          <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono">
+                          <span className="text-base sm:text-lg font-bold text-emerald-700 font-mono">
                             {formatRupiah(bestConversions[0].sellingPrice)}
                           </span>
-                          <span className="text-xs text-slate-600 font-semibold font-sans">
+                          <span className="text-xs text-slate-500 font-sans">
                             / {bestConversions[0].name}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {bestConversions.slice(1).map((tier, tIdx) => (
-                            <span
-                              key={tIdx}
-                              className="text-xs font-black text-emerald-900 bg-emerald-100/90 px-2 py-0.5 rounded border border-emerald-300 font-mono inline-flex items-center gap-1"
-                            >
-                              <span>{formatRupiah(tier.sellingPrice)}</span>
-                              <span className="text-[10px] font-semibold text-emerald-950 font-sans">/ {tier.name}</span>
+                            <span key={tIdx} className="text-xs font-mono font-medium text-emerald-800">
+                              ~{formatRupiah(tier.sellingPrice)} <span className="text-[10px] text-slate-500 font-sans">/{tier.name}</span>
                             </span>
                           ))}
                         </div>
@@ -317,316 +333,397 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   </div>
                 </div>
 
-                <div className="text-[10px] text-emerald-800 mt-1.5 pt-1.5 border-t border-emerald-100 flex items-center justify-between">
-                  <span>Estimasi Laba:</span>
-                  <span className="font-extrabold text-emerald-700">+{formatRupiah(cheapestSelling.profitPerUnit)}</span>
+                <div className="text-[10px] text-emerald-800 mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between">
+                  <span>Estimasi Laba</span>
+                  <span className="font-bold text-emerald-700 font-mono">+{formatRupiah(cheapestSelling.profitPerUnit)}</span>
                 </div>
               </div>
 
             </div>
           </div>
         ) : (
-          <div className="mt-3.5 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 flex items-center gap-2 text-xs">
+          <div className="mt-3.5 p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 flex items-center gap-2 text-xs">
             <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
-            <span>Belum ada penawaran harga supplier untuk produk ini.</span>
+            <span>Belum ada penawaran harga supplier untuk obat ini.</span>
           </div>
         )}
       </div>
 
-      {/* Supplier Comparison List */}
+      {/* Card Body: Interactive Tabs (Quotes List / Multi-Units / Quick Calculator) */}
       <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Perbandingan Supplier ({quotesSorted.length})
-            </span>
+          {/* Clean Segmented Tab Switcher */}
+          <div className="flex items-center justify-between gap-1 mb-3 border-b border-slate-100 pb-2">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCardTab('quotes')}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  cardTab === 'quotes'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                PBF ({quotesSorted.length})
+              </button>
+              {bestConversions.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setCardTab('conversions')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                    cardTab === 'conversions'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  Satuan ({bestConversions.length})
+                </button>
+              )}
+              {quotesSorted.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCardTab('calculator')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                    cardTab === 'calculator'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                  title="Hitung cepat total belanja"
+                >
+                  Kalkulator Qty
+                </button>
+              )}
+            </div>
+
             {quotesSorted.length > 1 && (
-              <span className="text-[11px] text-slate-400">
-                Rata-rata: {formatRupiah(stats.avgPrice)}
+              <span className="text-[11px] text-slate-400 font-mono">
+                Rata: {formatRupiah(stats.avgPrice)}
               </span>
             )}
           </div>
 
-          {quotesSorted.length === 0 ? (
-            <div className="py-6 text-center">
-              <p className="text-xs text-slate-400">
-                Klik tombol di bawah untuk memasukkan penawaran harga supplier pertama.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {displayedQuotes.map((quote, idx) => {
-                const isCheapest = idx === 0;
-                const isMostExpensive = idx === quotesSorted.length - 1 && quotesSorted.length > 1;
-                const priceDiffFromCheapest = quote.price - stats.minPrice;
-                const pctFromCheapest = stats.minPrice > 0 
-                  ? Math.round((priceDiffFromCheapest / stats.minPrice) * 100) 
-                  : 0;
+          {/* TAB 1: QUOTES BREAKDOWN */}
+          {cardTab === 'quotes' && (
+            quotesSorted.length === 0 ? (
+              <div className="py-6 text-center">
+                <p className="text-xs text-slate-400">
+                  Belum ada penawaran. Klik "+ Supplier" di bawah untuk memasukkan data penawaran PBF.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {displayedQuotes.map((quote, idx) => {
+                  const isCheapest = idx === 0;
+                  const priceDiffFromCheapest = quote.price - stats.minPrice;
+                  const pctFromCheapest = stats.minPrice > 0 
+                    ? Math.round((priceDiffFromCheapest / stats.minPrice) * 100) 
+                    : 0;
 
-                const quoteSelling = calculateSellingPrice(quote.price, settings);
-                const quoteSellingPrice = quote.sellingPrice || quoteSelling.sellingPrice;
-                const quoteConversions = getProductUnitConversions(product, quote.price, quoteSellingPrice);
+                  const quoteSelling = calculateSellingPrice(quote.price, settings);
+                  const quoteSellingPrice = quote.sellingPrice || quoteSelling.sellingPrice;
+                  const quoteConversions = getProductUnitConversions(product, quote.price, quoteSellingPrice, quote.unit);
 
-                return (
-                  <div
-                    key={quote.id}
-                    className={`p-3 rounded-xl border text-xs transition-all ${
-                      isCheapest
-                        ? 'bg-emerald-50/40 border-emerald-200 shadow-2xs'
-                        : 'bg-slate-50/60 border-slate-200/80 hover:bg-slate-100/60'
-                    }`}
+                  return (
+                    <div
+                      key={quote.id}
+                      className={`p-3 rounded-xl border text-xs transition-all ${
+                        isCheapest
+                          ? 'bg-emerald-50/50 border-emerald-300/80 shadow-2xs'
+                          : 'bg-slate-50/60 border-slate-200/80 hover:bg-slate-100/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          {/* Supplier Name and Rank Badge */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-slate-900 text-sm">
+                              {quote.supplierName}
+                            </span>
+                            {isCheapest && (
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded">
+                                Termurah
+                              </span>
+                            )}
+                          </div>
+
+                          {/* HNA and Discount Info */}
+                          {(quote.hna || quote.discountPercent || quote.discount1Value || quote.discount2Value) ? (
+                            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-600 flex-wrap">
+                              {quote.hna && (
+                                <span>HNA: <strong className="font-mono text-slate-700">{formatRupiah(quote.hna)}</strong></span>
+                              )}
+                              {quote.discountPercent !== undefined && quote.discountPercent > 0 && (
+                                <span className="text-emerald-700 font-semibold">Disc: {quote.discountPercent}%</span>
+                              )}
+                              {quote.discount1Value !== undefined && quote.discount1Value > 0 && (
+                                <span className="text-emerald-700 font-semibold">
+                                  D1: {quote.discount1Type === 'amount' ? formatRupiah(quote.discount1Value) : `${quote.discount1Value}%`}
+                                </span>
+                              )}
+                              {quote.discount2Value !== undefined && quote.discount2Value > 0 && (
+                                <span className="text-teal-700 font-semibold">
+                                  D2: {quote.discount2Type === 'amount' ? formatRupiah(quote.discount2Value) : `${quote.discount2Value}%`}
+                                </span>
+                              )}
+                            </div>
+                          ) : null}
+
+                          {/* MOQ & Lead time */}
+                          <div className="flex items-center gap-2.5 text-[11px] text-slate-500 mt-1 flex-wrap">
+                            {quote.moq && (
+                              <span className="flex items-center gap-1">
+                                <Boxes className="w-3 h-3 text-slate-400" />
+                                Min: {quote.moq} {quote.unit || product.defaultUnit}
+                              </span>
+                            )}
+                            {quote.leadTimeDays !== undefined && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                {quote.leadTimeDays === 0 ? 'Ready / Same Day' : `${quote.leadTimeDays} Hari`}
+                              </span>
+                            )}
+                            {quote.notes && (
+                              <span className="truncate max-w-[160px] text-slate-500">
+                                • {quote.notes}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Pricing Column */}
+                        <div className="text-right shrink-0">
+                          <span className="text-[10px] text-slate-400 uppercase font-semibold block">
+                            Modal Beli
+                          </span>
+                          <span className={`font-mono font-bold text-sm sm:text-base block ${isCheapest ? 'text-emerald-700' : 'text-slate-900'}`}>
+                            {formatRupiah(quoteConversions[0]?.costPrice || quote.price)}
+                          </span>
+                          <span className="text-[10px] text-slate-500 block">
+                            / {quoteConversions[0]?.name || quote.unit || product.defaultUnit}
+                          </span>
+
+                          {!isCheapest && priceDiffFromCheapest > 0 && (
+                            <span className="text-[10px] font-semibold text-rose-600 block mt-0.5">
+                              +{formatRupiah(priceDiffFromCheapest)} (+{pctFromCheapest}%)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Selling price preview & quote action row */}
+                      <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs gap-2">
+                        <div className="text-[11px] text-slate-500">
+                          Jual Apotek: <strong className="text-emerald-800 font-mono">{formatRupiah(quoteSellingPrice)}</strong>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onEditQuote(product, quote)}
+                            className="text-slate-600 hover:text-slate-900 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <Edit className="w-3 h-3" />
+                            <span>Edit</span>
+                          </button>
+                          <span className="text-slate-300">·</span>
+                          <button
+                            type="button"
+                            onClick={() => onDeleteQuote(product.id, quote.id)}
+                            className="text-rose-600 hover:text-rose-800 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Hapus</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {hasMoreQuotes && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllQuotes(!showAllQuotes)}
+                    className="w-full py-2 text-center text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50/40 hover:bg-emerald-50 rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-bold text-slate-900 text-sm">
-                            {quote.supplierName}
-                          </span>
-                          {isCheapest && (
-                            <span className="text-[10px] font-bold uppercase bg-emerald-600 text-white px-1.5 py-0.2 rounded">
-                              Best Deal
-                            </span>
-                          )}
-                          {isMostExpensive && (
-                            <span className="text-[10px] font-medium text-slate-500 bg-slate-200 px-1.5 py-0.2 rounded">
-                              Tertinggi
-                            </span>
-                          )}
-                        </div>
+                    {showAllQuotes ? (
+                      <>
+                        <ChevronUp className="w-3.5 h-3.5" />
+                        <span>Sembunyikan Sebagian</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-3.5 h-3.5" />
+                        <span>Lihat {quotesSorted.length - 3} Penawaran Lainnya</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )
+          )}
 
-                        {/* Pharma Breakdown: HNA & DISK 1 & DISK 2 */}
-                        {(quote.hna || quote.discount1Value || quote.discount2Value || quote.discountPercent) ? (
-                          <div className="flex items-center gap-1.5 mt-1 text-[11px] flex-wrap">
-                            {quote.hna && (
-                              <span className="text-slate-500">
-                                Modal Awal: <span className="font-mono text-slate-700 font-semibold">{formatRupiah(quote.hna)}</span>
-                              </span>
-                            )}
-                            {quote.discount1Value !== undefined && quote.discount1Value > 0 ? (
-                              <span className="text-emerald-700 font-bold bg-emerald-100/80 px-1 rounded">
-                                D1: {quote.discount1Type === 'amount' ? `-${formatRupiah(quote.discount1Value)}` : `-${quote.discount1Value}%`}
-                              </span>
-                            ) : quote.discountPercent !== undefined && quote.discountPercent > 0 ? (
-                              <span className="text-emerald-700 font-bold bg-emerald-100/80 px-1 rounded">
-                                D1: -{quote.discountPercent}%
-                              </span>
-                            ) : null}
-                            {quote.discount2Value !== undefined && quote.discount2Value > 0 && (
-                              <span className="text-teal-700 font-bold bg-teal-100/80 px-1 rounded">
-                                D2: {quote.discount2Type === 'amount' ? `-${formatRupiah(quote.discount2Value)}` : `-${quote.discount2Value}%`}
-                              </span>
-                            )}
-                          </div>
-                        ) : null}
-
-                        {/* Satuan & PPN Info */}
-                        <div className="flex items-center gap-2 text-[11px] mt-1.5 text-slate-600 flex-wrap">
-                          {quoteConversions.length <= 1 ? (
-                            <span className="text-slate-600 font-medium">
-                              Satuan: <strong className="text-slate-900">{quoteConversions[0]?.name || quote.unit || product.defaultUnit}</strong>
-                            </span>
-                          ) : (
-                            <div className="inline-flex items-center gap-1.5 flex-wrap">
-                              <span className="text-slate-500 font-medium">Satuan:</span>
-                              {quoteConversions.map((tier, tIdx) => (
-                                <span key={tIdx} className="bg-slate-100 text-slate-700 font-semibold px-1.5 py-0.5 rounded text-[10px] border border-slate-200">
-                                  {tier.name} {tIdx === 0 ? '(Utama)' : `(@${tier.content} ${quoteConversions[0].name})`}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          <span className="text-slate-300">•</span>
-                          {settings.ppnEnabled ? (
-                            <span className="text-purple-700 font-medium">
-                              +PPN {settings.ppnPercent}%: <strong>{formatRupiah(quote.priceWithPpn || quoteSelling.costWithPpn)}</strong>
-                            </span>
-                          ) : (
-                            <span className="text-slate-500 font-medium">
-                              Non-PPN
-                            </span>
+          {/* TAB 2: UNIT CONVERSIONS TABLE */}
+          {cardTab === 'conversions' && bestConversions.length > 0 && (
+            <div className="space-y-2 border border-slate-200 rounded-xl overflow-hidden bg-white text-xs shadow-2xs">
+              <div className="p-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-[11px] font-semibold text-slate-700">
+                <span>Konversi {bestConversions.length} Satuan</span>
+                <span className="text-[10px] text-slate-500 font-normal">Dari Pokok hingga Kemasan Terbesar</span>
+              </div>
+              <table className="w-full text-left">
+                <thead className="bg-slate-50/60 text-slate-600 font-bold border-b border-slate-200 text-[11px]">
+                  <tr>
+                    <th className="p-2">Tingkat & Satuan</th>
+                    <th className="p-2">Rasio / Isi</th>
+                    <th className="p-2 text-right">Modal</th>
+                    <th className="p-2 text-right">Jual</th>
+                    <th className="p-2 text-right">Laba</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {bestConversions.map((tier, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50">
+                      <td className="p-2 font-bold text-slate-900">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className="text-[10px] text-slate-400 font-mono">T{tier.level}</span>
+                          <span>{tier.name}</span>
+                          {idx === 0 && <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1 rounded">Pokok</span>}
+                          {idx === bestConversions.length - 1 && bestConversions.length > 1 && (
+                            <span className="text-[9px] font-bold text-blue-800 bg-blue-100 px-1 rounded">Terbesar</span>
                           )}
                         </div>
-
-                        {/* Extra Quote Details: MOQ, lead time, notes */}
-                        <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1 flex-wrap">
-                          {quote.moq && (
-                            <span className="flex items-center gap-1" title="Minimum Order Quantity">
-                              <Boxes className="w-3 h-3 text-slate-400" />
-                              Min: {quote.moq} {quote.unit || product.defaultUnit}
-                            </span>
-                          )}
-                          {quote.leadTimeDays !== undefined && (
-                            <span className="flex items-center gap-1" title="Estimasi waktu kirim">
-                              <Clock className="w-3 h-3 text-slate-400" />
-                              {quote.leadTimeDays === 0 ? 'Ready/Same day' : `${quote.leadTimeDays} Hari`}
-                            </span>
-                          )}
-                          {quote.notes && (
-                            <span className="text-slate-600 truncate max-w-[180px]" title={quote.notes}>
-                              • {quote.notes}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Pricing column with difference */}
-                      <div className="text-right shrink-0">
-                        <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">
-                          Modal Beli
-                        </span>
-
-                        {quoteConversions.length <= 1 ? (
-                          // 1 Satuan: Tampilkan HANYA 1 harga modal dengan satuannya
-                          <div className="mt-0.5">
-                            <span className={`font-black text-base sm:text-lg font-mono ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
-                              {formatRupiah(quoteConversions[0]?.costPrice || quote.price)}
-                            </span>
-                            <span className="text-[11px] text-slate-500 font-semibold block">
-                              / {quoteConversions[0]?.name || quote.unit || product.defaultUnit}
-                            </span>
-                          </div>
-                        ) : (
-                          // 2 Satuan: Menampilkan 2 harga modal mengikuti satuannya
-                          <div className="mt-0.5 space-y-0.5 text-right">
-                            <div className="flex items-baseline justify-end gap-1" title="Satuan Utama (Terkecil)">
-                              <span className={`font-black text-sm sm:text-base font-mono ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
-                                {formatRupiah(quoteConversions[0].costPrice)}
-                              </span>
-                              <span className="text-[11px] text-slate-600 font-semibold">
-                                / {quoteConversions[0].name}
-                              </span>
-                            </div>
-                            {quoteConversions.slice(1).map((tier, tIdx) => (
-                              <div key={tIdx} className="flex items-baseline justify-end gap-1 text-[11px] font-bold text-blue-700 font-mono" title={`1 ${tier.name} = ${tier.content} ${quoteConversions[0].name}`}>
-                                <span>{formatRupiah(tier.costPrice)}</span>
-                                <span className="text-slate-500 font-medium text-[10px] font-sans">/ {tier.name}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {!isCheapest && priceDiffFromCheapest > 0 && (
-                          <span className="text-[10px] font-semibold text-rose-600 bg-rose-50 px-1 py-0.2 rounded inline-block mt-0.5">
-                            +{formatRupiah(priceDiffFromCheapest)} ({pctFromCheapest > 0 ? `+${pctFromCheapest}%` : ''})
-                          </span>
-                        )}
-                        {quote.lastUpdated && (
-                          <p className="text-[10px] text-slate-400 mt-0.5">
-                            {quote.lastUpdated}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Prominent Selling Price Row: (Modal - D1 - D2 + PPN) + Margin */}
-                    <div className="mt-2.5 pt-2 border-t border-slate-200/70 flex items-center justify-between flex-wrap gap-2 bg-emerald-50/50 -mx-3 -mb-3 px-3 py-2 rounded-b-xl">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-900 bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-1">
-                          <TrendingUp className="w-3 h-3 text-emerald-700" />
-                          Harga Jual ({settings.marginType === 'amount' ? `+${formatRupiah(settings.marginAmountValue)}` : `+${settings.marginPercent}%`}):
-                        </span>
-
-                        {quoteConversions.length <= 1 ? (
-                          // 1 Satuan: Tampilkan HANYA 1 harga jual mengikuti satuan
-                          <span className="text-xs font-black text-emerald-800 font-mono">
-                            {formatRupiah(quoteConversions[0]?.sellingPrice || quoteSelling.sellingPrice)}
-                            <span className="text-[11px] font-semibold text-slate-600 font-sans ml-1">
-                              / {quoteConversions[0]?.name || product.defaultUnit}
-                            </span>
-                          </span>
-                        ) : (
-                          // 2 Satuan: Menampilkan 2 harga jual mengikuti satuannya
-                          <div className="inline-flex items-center gap-1.5 flex-wrap">
-                            <span className="text-xs font-black text-emerald-800 font-mono">
-                              {formatRupiah(quoteConversions[0].sellingPrice)}
-                              <span className="text-[11px] font-semibold text-slate-600 font-sans ml-0.5">
-                                /{quoteConversions[0].name}
-                              </span>
-                            </span>
-                            <span className="text-emerald-300">•</span>
-                            {quoteConversions.slice(1).map((tier, tIdx) => (
-                              <span
-                                key={tIdx}
-                                className="text-xs font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300/80 px-1.5 py-0.5 rounded font-mono inline-flex items-center"
-                              >
-                                {formatRupiah(tier.sellingPrice)}
-                                <span className="text-[10px] font-semibold text-emerald-950 font-sans ml-0.5">
-                                  /{tier.name}
-                                </span>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="text-[11px] text-emerald-800 font-semibold">
-                        Laba: <span className="font-bold text-emerald-700">+{formatRupiah((quote.sellingPrice || quoteSelling.sellingPrice) - (quote.priceWithPpn || quoteSelling.costWithPpn))}</span>
-                      </div>
-                    </div>
-
-                    {/* Action buttons per quote */}
-                    <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-end gap-2 text-xs">
-                      <button
-                        onClick={() => onEditQuote(product, quote)}
-                        className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 font-medium cursor-pointer transition-colors flex items-center gap-1"
-                        title="Ubah harga atau data penawaran"
-                      >
-                        <Edit className="w-3 h-3 text-slate-500" />
-                        <span>Edit Harga</span>
-                      </button>
-                      <button
-                        onClick={() => onDeleteQuote(product.id, quote.id)}
-                        className="px-2.5 py-1 rounded bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-600 font-medium cursor-pointer transition-colors flex items-center gap-1"
-                        title="Hapus penawaran dari vendor ini"
-                      >
-                        <Trash2 className="w-3 h-3 text-rose-500" />
-                        <span>Hapus</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {hasMoreQuotes && (
-                <button
-                  onClick={() => setShowAllQuotes(!showAllQuotes)}
-                  className="w-full py-2 text-center text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50/50 hover:bg-emerald-50 rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                >
-                  {showAllQuotes ? (
-                    <>
-                      <ChevronUp className="w-3.5 h-3.5" />
-                      <span>Tampilkan Lebih Sedikit</span>
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="w-3.5 h-3.5" />
-                      <span>Lihat {quotesSorted.length - 3} Penawaran Lainnya</span>
-                    </>
-                  )}
-                </button>
-              )}
+                      </td>
+                      <td className="p-2 text-slate-500 text-[11px]">
+                        {idx === 0 ? '1 Unit Pokok' : `@${tier.content} ${productUnits[idx - 1]?.name || bestConversions[0].name} (Total: ${tier.totalRatio.toLocaleString('id-ID')} ${bestConversions[0].name})`}
+                      </td>
+                      <td className="p-2 text-right font-mono font-medium text-slate-800">
+                        {formatRupiah(tier.costPrice)}
+                      </td>
+                      <td className="p-2 text-right font-mono font-bold text-emerald-700">
+                        {formatRupiah(tier.sellingPrice)}
+                      </td>
+                      <td className="p-2 text-right font-mono font-bold text-emerald-800">
+                        +{formatRupiah(tier.profit)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
+
+          {/* TAB 3: INLINE QUANTITY CALCULATOR WITH MULTI-UNIT SELECTOR */}
+          {cardTab === 'calculator' && (
+            <div className="space-y-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="font-semibold text-slate-700">Jumlah Pembelian:</span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="1"
+                    value={inlineQty}
+                    onChange={(e) => setInlineQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="w-16 px-2 py-0.5 text-center font-bold bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                  />
+                  <select
+                    value={activeCalcUnit}
+                    onChange={(e) => setCalculatorUnit(e.target.value)}
+                    className="px-2 py-0.5 text-xs font-bold border border-slate-300 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                  >
+                    {productUnits.map((u) => (
+                      <option key={u.name} value={u.name}>
+                        {u.name} (T{u.level})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {isMulti && activeCalcUnit.toLowerCase() !== productUnits[0].name.toLowerCase() && (
+                <div className="text-[10px] text-slate-500 flex items-center justify-between px-1">
+                  <span>Ekuivalen: <strong>{(inlineQty * calcRatio).toLocaleString('id-ID')} {productUnits[0].name}</strong></span>
+                  <span className="text-emerald-700 font-semibold">1 {activeCalcUnit} = {calcRatio} {productUnits[0].name}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5 pt-1 border-t border-slate-200">
+                {quotesSorted.map((q, idx) => {
+                  const qConvs = getProductUnitConversions(product, q.price, q.sellingPrice, q.unit);
+                  const matchedConv = qConvs.find(c => c.name.toLowerCase() === activeCalcUnit.toLowerCase());
+                  const unitPrice = matchedConv ? matchedConv.costPrice : (q.price * calcRatio);
+                  const cost = unitPrice * inlineQty;
+
+                  const cheapestQuoteConvs = getProductUnitConversions(product, stats.cheapestQuote?.price || 0, stats.cheapestQuote?.sellingPrice, stats.cheapestQuote?.unit);
+                  const cheapestMatchedConv = cheapestQuoteConvs.find(c => c.name.toLowerCase() === activeCalcUnit.toLowerCase());
+                  const cheapestUnitPrice = cheapestMatchedConv ? cheapestMatchedConv.costPrice : ((stats.cheapestQuote?.price || 0) * calcRatio);
+                  const cheapestCost = cheapestUnitPrice * inlineQty;
+                  const diff = cost - cheapestCost;
+                  const isCheapest = idx === 0;
+
+                  return (
+                    <div 
+                      key={q.id}
+                      className={`p-2 rounded-lg flex items-center justify-between ${
+                        isCheapest ? 'bg-emerald-100/70 font-semibold text-emerald-950' : 'bg-white text-slate-800 border border-slate-200/70'
+                      }`}
+                    >
+                      <div className="min-w-0 truncate pr-2">
+                        <span className="font-bold">{q.supplierName}</span>
+                        {isCheapest && <span className="ml-1 text-[10px] text-emerald-800 font-bold">👑 Termurah</span>}
+                        <span className="block text-[10px] text-slate-400 font-mono">
+                          {formatRupiah(unitPrice)} / {activeCalcUnit}
+                        </span>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="font-mono font-bold">{formatRupiah(cost)}</span>
+                        {!isCheapest && diff > 0 && (
+                          <span className="block text-[10px] text-rose-600 font-normal">
+                            +{formatRupiah(diff)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* Card Footer Actions */}
-        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2">
+        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2 flex-wrap">
           <button
             id={`btn-add-quote-${product.id}`}
+            type="button"
             onClick={() => onAddQuote(product)}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-lg transition-colors cursor-pointer min-h-[42px]"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-xl transition-colors cursor-pointer min-h-[40px]"
+            title="Tambah penawaran supplier PBF baru"
           >
             <Plus className="w-3.5 h-3.5 text-slate-600" />
             <span>+ Supplier</span>
           </button>
 
+          {onViewDetail && (
+            <button
+              type="button"
+              onClick={() => onViewDetail(product)}
+              className="inline-flex items-center justify-center gap-1 py-2 px-3 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer min-h-[40px]"
+              title="Lihat detail spesifikasi dan komparasi lengkap"
+            >
+              <Eye className="w-3.5 h-3.5 text-slate-500" />
+              <span>Detail</span>
+            </button>
+          )}
+
           <button
             id={`btn-simulate-${product.id}`}
+            type="button"
             onClick={() => onSimulateOrder(product.id)}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 rounded-lg transition-colors cursor-pointer min-h-[42px]"
+            className="inline-flex items-center justify-center gap-1.5 py-2 px-3.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 border border-emerald-200 rounded-xl transition-colors cursor-pointer min-h-[40px]"
+            title="Buka simulasi order"
           >
-            <ShoppingCart className="w-3.5 h-3.5" />
-            <span>Simulasi Order</span>
+            <ShoppingCart className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Simulasi</span>
           </button>
         </div>
       </div>
