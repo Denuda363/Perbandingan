@@ -675,12 +675,20 @@ export function normalizeProductUnits(product: Partial<Product> | null | undefin
     }
 
     let runningRatio = 1;
+    const seenNames = new Map<string, number>();
     return sourceList.map((u, idx) => {
       const level = idx + 1;
       const content = level === 1 ? 1 : Math.max(1, u.content || 1);
       runningRatio = level === 1 ? 1 : runningRatio * content;
+      let rawName = (u.name || (level === 1 ? 'Satuan' : `Kemasan ${level}`)).trim();
+      const lower = rawName.toLowerCase();
+      const count = seenNames.get(lower) || 0;
+      seenNames.set(lower, count + 1);
+      if (count > 0) {
+        rawName = `${rawName} (T${level})`;
+      }
       return {
-        name: (u.name || (level === 1 ? 'Satuan' : `Kemasan ${level}`)).trim(),
+        name: rawName,
         content,
         totalRatio: runningRatio,
         level,

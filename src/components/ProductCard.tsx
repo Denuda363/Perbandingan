@@ -139,7 +139,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   <span aria-hidden="true" className="text-slate-300">·</span>
                   <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                     <PackageCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Multi-Satuan ({productUnits.length} Tingkat: {productUnits.map(u => u.name).join(' → ')})</span>
+                    <span>Multi-Satuan ({productUnits.length} Tingkat)</span>
                   </span>
                 </>
               ) : (
@@ -152,6 +152,51 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 </>
               )}
             </div>
+
+            {/* DETAIL ISI MULTI-SATUAN PADA HALAMAN AWAL */}
+            {isMulti && (
+              <div className="mt-2.5 p-2.5 sm:p-3 rounded-xl bg-slate-50 border border-slate-200/90 text-xs space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between gap-1 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-900 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Detail Isi Kemasan:</span>
+                  </span>
+                  <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md border border-emerald-300/60">
+                    {productUnits.map((u) => u.name).join(' → ')}
+                  </span>
+                </div>
+
+                <div className="text-xs font-bold text-emerald-950 bg-emerald-50/80 p-2 rounded-lg border border-emerald-200/80 leading-snug">
+                  {product.packContent || formatProductUnitSummary(product)}
+                </div>
+
+                {/* Rincian Hierarki Isi Setiap Satuan */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  {productUnits.map((u, uIdx) => (
+                    <span
+                      key={`card-unit-${u.level}-${u.name}-${uIdx}`}
+                      className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md font-mono transition-colors ${
+                        u.level === 1
+                          ? 'bg-white text-emerald-950 border border-emerald-300 font-bold shadow-2xs'
+                          : 'bg-white text-slate-800 border border-slate-200 font-medium'
+                      }`}
+                    >
+                      <span className="text-[9px] font-sans font-bold px-1 py-0.2 rounded bg-slate-100 text-slate-600">
+                        T{u.level}
+                      </span>
+                      <strong>{u.name}</strong>
+                      {u.level > 1 ? (
+                        <span className="text-slate-600 font-sans text-[10px]">
+                          (= {u.content} {productUnits[uIdx - 1]?.name} • {u.totalRatio.toLocaleString('id-ID')} {productUnits[0]?.name})
+                        </span>
+                      ) : (
+                        <span className="text-emerald-700 font-sans text-[10px] font-bold">(Satuan Pokok / Ecer)</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Action Kebab Menu */}
@@ -340,6 +385,55 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               </div>
 
             </div>
+
+            {/* Rincian Lengkap Harga per Satuan pada Halaman Awal */}
+            {bestConversions.length > 1 && (
+              <div className="pt-2.5 border-t border-slate-200/80">
+                <div className="flex items-center justify-between gap-1 text-[11px] font-bold text-slate-700 mb-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Rincian Modal & Jual Seluruh Satuan:</span>
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-semibold font-mono bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                    +{settings.marginPercent}% margin
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  {bestConversions.map((tier, tIdx) => (
+                    <div 
+                      key={`hero-tier-${tier.level}-${tier.name}-${tIdx}`} 
+                      className={`p-2 rounded-xl border text-center transition-all ${
+                        tier.level === 1 
+                          ? 'bg-emerald-50/70 border-emerald-300 shadow-2xs' 
+                          : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-slate-900 truncate">
+                        <span>{tier.name}</span>
+                        {tier.level === 1 ? (
+                          <span className="text-[9px] bg-emerald-200 text-emerald-900 px-1 rounded font-semibold">
+                            Pokok
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-slate-400 font-normal">
+                            T{tier.level}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 flex items-baseline justify-between text-[10px] text-slate-500 px-0.5">
+                        <span>Modal:</span>
+                        <strong className="font-mono text-slate-900 font-bold">{formatRupiah(tier.costPrice)}</strong>
+                      </div>
+                      <div className="mt-0.5 pt-0.5 border-t border-slate-100 flex items-baseline justify-between text-[10px] text-emerald-700 px-0.5">
+                        <span>Jual:</span>
+                        <strong className="font-mono text-emerald-800 font-bold">{formatRupiah(tier.sellingPrice)}</strong>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="mt-3.5 p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 flex items-center gap-2 text-xs">
@@ -638,8 +732,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                     onChange={(e) => setCalculatorUnit(e.target.value)}
                     className="px-2 py-0.5 text-xs font-bold border border-slate-300 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
                   >
-                    {productUnits.map((u) => (
-                      <option key={u.name} value={u.name}>
+                    {productUnits.map((u, uIdx) => (
+                      <option key={`calc-opt-${u.level}-${u.name}-${uIdx}`} value={u.name}>
                         {u.name} (T{u.level})
                       </option>
                     ))}

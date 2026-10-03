@@ -255,8 +255,8 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                             {quoteConversions.length <= 1 ? (
                               <span className="font-medium text-slate-600">Satuan: {quoteConversions[0]?.name || quote.unit || product.defaultUnit}</span>
                             ) : (
-                              <span className="font-medium text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-100">
-                                2 Satuan: {quoteConversions.slice(0, 2).map(u => u.name).join(' • ')}
+                              <span className="font-medium text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                Multi ({quoteConversions.length} Satuan): {quoteConversions.map(u => u.name).join(' → ')}
                               </span>
                             )}
                             {quote.discountPercent ? (
@@ -268,37 +268,41 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                         <div className="text-right shrink-0">
                           <span className="text-[10px] text-slate-400 block font-semibold">MODAL</span>
                           {quoteConversions.length <= 1 ? (
-                            // 1 Satuan: Tampilkan HANYA 1 harga modal
                             <div>
-                              <span className={`font-extrabold text-sm ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
+                              <span className={`font-mono font-bold text-sm ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
                                 {formatRupiah(quoteConversions[0]?.costPrice || quote.price)}
                               </span>
-                              <span className="text-[10px] text-slate-500 font-medium ml-1">
+                              <span className="text-[10px] text-slate-500 font-medium ml-1 font-sans">
                                 /{quoteConversions[0]?.name || product.defaultUnit}
                               </span>
                             </div>
                           ) : (
-                            // 2 Satuan: Menampilkan 2 harga modal mengikuti satuan
-                            <div>
-                              <span className={`font-extrabold text-sm ${isCheapest ? 'text-emerald-700' : 'text-slate-800'}`}>
-                                {formatRupiah(quoteConversions[0].costPrice)}/{quoteConversions[0].name}
-                              </span>
-                              <span className="block text-[11px] text-blue-700 font-bold">
-                                {formatRupiah(quoteConversions[1].costPrice)}/{quoteConversions[1].name}
-                              </span>
+                            <div className="space-y-0.5">
+                              {quoteConversions.map((qc, qcIdx) => (
+                                <div key={qcIdx} className="font-mono text-xs text-right">
+                                  <span className={qcIdx === 0 && isCheapest ? 'text-emerald-700 font-bold' : qcIdx === 0 ? 'text-slate-900 font-bold' : 'text-slate-600 font-medium'}>
+                                    {formatRupiah(qc.costPrice)}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 font-sans ml-0.5">/{qc.name}</span>
+                                </div>
+                              ))}
                             </div>
                           )}
 
                           {showSellingPrice && (
-                            <div className="mt-0.5">
+                            <div className="mt-1 pt-1 border-t border-slate-100">
                               {quoteConversions.length <= 1 ? (
-                                <span className="block text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1 rounded">
+                                <span className="block text-[10px] font-bold text-emerald-800 font-mono">
                                   Jual: {formatRupiah(quoteConversions[0].sellingPrice)}/{quoteConversions[0].name}
                                 </span>
                               ) : (
-                                <span className="block text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1 rounded">
-                                  Jual: {formatRupiah(quoteConversions[0].sellingPrice)}/{quoteConversions[0].name} • {formatRupiah(quoteConversions[1].sellingPrice)}/{quoteConversions[1].name}
-                                </span>
+                                <div className="space-y-0.5">
+                                  {quoteConversions.map((qc, qcIdx) => (
+                                    <div key={qcIdx} className="text-[10px] font-mono font-semibold text-emerald-800">
+                                      Jual: {formatRupiah(qc.sellingPrice)}/{qc.name}
+                                    </div>
+                                  ))}
+                                </div>
                               )}
                             </div>
                           )}
@@ -446,33 +450,39 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
                                 </span>
                               </div>
                             ) : (
-                              // 2 Satuan: Menampilkan 2 harga modal mengikuti satuan
-                              <div className="flex flex-col items-center">
-                                <span 
-                                  className={`font-bold text-xs sm:text-sm font-mono ${
-                                    isCheapest 
-                                      ? 'text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md' 
-                                      : 'text-slate-800'
-                                  }`}
-                                >
-                                  {formatRupiah(quoteConversions[0].costPrice)}/{quoteConversions[0].name}
-                                </span>
-                                <span className="text-[10px] text-blue-700 font-bold font-mono mt-0.5">
-                                  {formatRupiah(quoteConversions[1].costPrice)}/{quoteConversions[1].name}
-                                </span>
+                              // Multi-Satuan: Menampilkan seluruh tingkatan harga modal
+                              <div className="flex flex-col items-center space-y-0.5">
+                                {quoteConversions.map((qc, qcIdx) => (
+                                  <span 
+                                    key={qcIdx}
+                                    className={`font-mono ${
+                                      qcIdx === 0 && isCheapest 
+                                        ? 'text-xs sm:text-sm font-bold text-emerald-700 bg-emerald-100/70 px-1.5 py-0.2 rounded-md' 
+                                        : qcIdx === 0 
+                                        ? 'text-xs sm:text-sm font-bold text-slate-800'
+                                        : 'text-[11px] font-semibold text-slate-600'
+                                    }`}
+                                  >
+                                    {formatRupiah(qc.costPrice)}<span className="text-[10px] text-slate-400 font-sans ml-0.5">/{qc.name}</span>
+                                  </span>
+                                ))}
                               </div>
                             )}
 
                             {showSellingPrice && (
-                              <div className="mt-1">
+                              <div className="mt-1 pt-1 border-t border-slate-100 w-full text-center">
                                 {quoteConversions.length <= 1 ? (
                                   <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/60 px-1 py-0.2 rounded block" title="Harga Jual Rekomendasi">
                                     Jual: {formatRupiah(quoteConversions[0].sellingPrice)}/{quoteConversions[0].name}
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/60 px-1 py-0.2 rounded block" title="Harga Jual Rekomendasi">
-                                    Jual: {formatRupiah(quoteConversions[0].sellingPrice)}/{quoteConversions[0].name} • {formatRupiah(quoteConversions[1].sellingPrice)}/{quoteConversions[1].name}
-                                  </span>
+                                  <div className="space-y-0.5">
+                                    {quoteConversions.map((qc, qcIdx) => (
+                                      <span key={qcIdx} className="text-[9px] font-mono font-bold text-emerald-800 bg-emerald-50/80 border border-emerald-200/40 px-1 py-0.2 rounded block">
+                                        Jual: {formatRupiah(qc.sellingPrice)}/{qc.name}
+                                      </span>
+                                    ))}
+                                  </div>
                                 )}
                               </div>
                             )}

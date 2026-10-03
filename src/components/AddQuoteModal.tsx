@@ -644,11 +644,11 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
               </span>
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
-              {productUnits.map((u) => {
+              {productUnits.map((u, uIdx) => {
                 const isSelected = (unit || activeProduct?.defaultUnit || '')?.toLowerCase() === u.name.toLowerCase();
                 return (
                   <button
-                    key={u.name}
+                    key={`quote-unit-${u.level || uIdx}-${u.name}-${uIdx}`}
                     type="button"
                     onClick={() => setUnit(u.name)}
                     className={`text-xs px-3 py-1.5 rounded-lg border font-bold cursor-pointer transition-colors flex items-center gap-1.5 ${

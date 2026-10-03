@@ -429,11 +429,11 @@ export const SimulationCalculator: React.FC<SimulationCalculatorProps> = ({
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    {productUnits.map((u) => {
+                    {productUnits.map((u, uIdx) => {
                       const isSel = (calcUnit || productUnits[0]?.name)?.toLowerCase() === u.name.toLowerCase();
                       return (
                         <button
-                          key={u.name}
+                          key={`calc-tier-btn-${u.level || uIdx}-${u.name}-${uIdx}`}
                           type="button"
                           onClick={() => setCalcUnit(u.name)}
                           className={`text-xs px-3 py-1.5 rounded-lg border font-bold cursor-pointer transition-colors ${

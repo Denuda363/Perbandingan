@@ -179,21 +179,42 @@ export const ProductTableView: React.FC<ProductTableViewProps> = ({
                     {/* Satuan & Kemasan */}
                     <td className="py-3 px-4">
                       {isMulti && productUnits.length > 1 ? (
-                        <div className="space-y-1">
+                        <div className="space-y-1.5 max-w-xs sm:max-w-sm">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200">
+                            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded border border-emerald-300">
                               Multi ({productUnits.length} Satuan)
                             </span>
-                            <span className="text-xs font-semibold text-slate-800">
-                              {productUnits[0]?.name}
-                              <span className="text-[10px] text-emerald-700 font-normal ml-0.5">(Pokok)</span>
+                            <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                              {productUnits.map((u) => u.name).join(' → ')}
                             </span>
                           </div>
-                          <div className="text-[11px] font-mono text-slate-600">
-                            {productUnits.map(u => u.name).join(' → ')}
+                          
+                          {/* Detail Isi Kemasan */}
+                          <div className="text-xs font-bold text-emerald-950 bg-emerald-50/70 p-1.5 rounded-lg border border-emerald-200/80 leading-snug">
+                            {product.packContent || formatProductUnitSummary(product)}
                           </div>
-                          <div className="text-[10px] text-slate-400">
-                            1 {productUnits[productUnits.length - 1]?.name} = {productUnits[productUnits.length - 1]?.totalRatio.toLocaleString('id-ID')} {productUnits[0]?.name}
+
+                          {/* Rincian Rasio Setiap Satuan */}
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {productUnits.map((u, uIdx) => (
+                              <span 
+                                key={`table-unit-${product.id}-${u.level}-${u.name}-${uIdx}`} 
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                                  u.level === 1 
+                                    ? 'bg-white text-emerald-900 font-bold border border-emerald-300 shadow-2xs' 
+                                    : 'bg-slate-50 text-slate-700 border border-slate-200'
+                                }`}
+                              >
+                                <strong>{u.name}</strong>
+                                {u.level > 1 ? (
+                                  <span className="text-slate-500 font-sans ml-0.5">
+                                    (= {u.content} {productUnits[uIdx - 1]?.name})
+                                  </span>
+                                ) : (
+                                  <span className="text-emerald-700 font-sans ml-0.5 font-bold">(Pokok)</span>
+                                )}
+                              </span>
+                            ))}
                           </div>
                         </div>
                       ) : (

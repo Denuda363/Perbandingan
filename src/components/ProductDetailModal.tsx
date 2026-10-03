@@ -669,8 +669,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     onChange={(e) => setConverterUnit(e.target.value)}
                     className="px-3 py-1 text-xs font-bold border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500"
                   >
-                    {productUnits.map((u) => (
-                      <option key={u.name} value={u.name}>
+                    {productUnits.map((u, uIdx) => (
+                      <option key={`conv-opt-${u.level || uIdx}-${u.name}-${uIdx}`} value={u.name}>
                         {u.name} (Tingkat {u.level})
                       </option>
                     ))}
@@ -735,8 +735,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     onChange={(e) => setTestSelectedUnit(e.target.value)}
                     className="px-2.5 py-1 text-xs font-bold border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
-                    {productUnits.map((u) => (
-                      <option key={u.name} value={u.name}>
+                    {productUnits.map((u, uIdx) => (
+                      <option key={`sim-opt-${u.level || uIdx}-${u.name}-${uIdx}`} value={u.name}>
                         {u.name}
                       </option>
                     ))}

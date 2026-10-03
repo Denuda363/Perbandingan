@@ -185,14 +185,17 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   // Handler to add a tier (supports more than 3 tiers, up to 10 tiers)
   const handleAddTier = () => {
     if (unitTiers.length >= 10) return;
-    const defaultNames = ['Tablet', 'Strip', 'Box', 'Dus', 'Karton', 'Master Box', 'Palet', 'Kemasan 8'];
-    const defaultContents = [1, 10, 10, 10, 10, 10, 10, 10];
-    const nextIdx = unitTiers.length;
+    const candidateNames = ['Dus', 'Karton', 'Master Box', 'Palet', 'Kemasan Besar', 'Lusin', 'Gross'];
+    const existingNames = new Set(unitTiers.map(t => t.name.trim().toLowerCase()));
+    let nextName = candidateNames.find(c => !existingNames.has(c.toLowerCase()));
+    if (!nextName) {
+      nextName = `Satuan Tingkat ${unitTiers.length + 1}`;
+    }
     setUnitTiers((prev) => [
       ...prev,
       { 
-        name: defaultNames[nextIdx] || `Satuan Tingkat ${nextIdx + 1}`, 
-        content: defaultContents[nextIdx] || 10 
+        name: nextName, 
+        content: 10 
       },
     ]);
   };
@@ -513,9 +516,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     {/* Chips Satuan Populer */}
                     <div className="flex items-center gap-1.5 flex-wrap pt-1">
                       <span className="text-[10px] text-slate-400 font-medium mr-1">Pilihan Cepat:</span>
-                      {COMMON_SINGLE_UNITS.map((u) => (
+                      {COMMON_SINGLE_UNITS.map((u, uIdx) => (
                         <button
-                          key={u}
+                          key={`single-preset-${uIdx}-${u}`}
                           type="button"
                           onClick={() => setSingleUnit(u)}
                           className={`text-[10px] px-2 py-0.5 rounded-md border cursor-pointer transition-colors ${
@@ -639,9 +642,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                         className="w-full px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white text-slate-900"
                       />
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {COMMON_BASE_UNITS.concat(COMMON_SUB_UNITS).slice(0, 8).map((u) => (
+                        {Array.from(new Set(COMMON_BASE_UNITS.concat(COMMON_SUB_UNITS))).slice(0, 8).map((u, uIdx) => (
                           <button
-                            key={u}
+                            key={`base-preset-${uIdx}-${u}`}
                             type="button"
                             onClick={() => handleUpdateTierName(0, u)}
                             className={`text-[10px] px-2 py-0.5 rounded-md border cursor-pointer transition-colors ${
@@ -703,9 +706,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                       </div>
 
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {COMMON_SUB_UNITS.concat(COMMON_MAIN_UNITS).slice(0, 8).map((u) => (
+                        {Array.from(new Set(COMMON_SUB_UNITS.concat(COMMON_MAIN_UNITS))).slice(0, 8).map((u, uIdx) => (
                           <button
-                            key={u}
+                            key={`sub-preset-${uIdx}-${u}`}
                             type="button"
                             onClick={() => handleUpdateTierName(1, u)}
                             className={`text-[10px] px-2 py-0.5 rounded-md border cursor-pointer transition-colors ${
@@ -775,9 +778,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                           </div>
 
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {['Box', 'Dus', 'Karton', 'Pack', 'Slop', 'Master Box', 'Palet'].map((u) => (
+                            {['Box', 'Dus', 'Karton', 'Pack', 'Slop', 'Master Box', 'Palet'].map((u, uIdx) => (
                               <button
-                                key={u}
+                                key={`main-preset-${tierIdx}-${uIdx}-${u}`}
                                 type="button"
                                 onClick={() => handleUpdateTierName(tierIdx, u)}
                                 className={`text-[10px] px-2 py-0.5 rounded-md border cursor-pointer transition-colors ${
@@ -942,11 +945,11 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {activeProductUnits.map((u) => {
+                        {activeProductUnits.map((u, uIdx) => {
                           const isSel = (quoteUnit || activeProductUnits[0]?.name)?.toLowerCase() === u.name.toLowerCase();
                           return (
                             <button
-                              key={u.name}
+                              key={`modal-quote-unit-${u.level || uIdx}-${u.name}-${uIdx}`}
                               type="button"
                               onClick={() => setQuoteUnit(u.name)}
                               className={`text-xs px-2.5 py-1 rounded-md border font-bold cursor-pointer transition-colors ${
